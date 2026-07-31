@@ -1,0 +1,12 @@
+.program dshot
+.side_set 1
+
+.wrap_target
+bit_loop:
+    out x, 1            side 0 [1]
+    jmp !x zero_bit     side 1 [2]
+one_bit:
+    jmp bit_loop        side 1 [2]
+zero_bit:
+    nop                 side 0 [2]
+.wrap

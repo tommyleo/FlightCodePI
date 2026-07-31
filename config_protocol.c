@@ -1,0 +1,530 @@
+#include "config_protocol.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "esc_controller.h"
+#include "flight_log.h"
+#include "flight_settings.h"
+#include "hardware/watchdog.h"
+#include "pico/bootrom.h"
+#include "pico/stdlib.h"
+
+#define CONFIG_LINE_LENGTH 192u
+#define CONFIG_CLIENT_TIMEOUT_US 3000000u
+#define MOTOR_TEST_TIMEOUT_US 1000000u
+#define DFU_DELAY_US 250000u
+#define ARM_CHANNEL_INDEX 5u
+
+static char input_line[CONFIG_LINE_LENGTH];
+static size_t input_length;
+static bool client_active;
+static uint32_t last_client_activity_us;
+static bool motor_test_enabled;
+static bool pid_simulation_enabled;
+static uint8_t motor_test_percent[4];
+static uint32_t last_motor_test_us;
+static bool dfu_pending;
+static uint32_t dfu_at_us;
+
+static void send_pids(void)
+{
+    const flight_settings_t *settings = flight_settings_get();
+    printf("@CFG PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %u\n",
+           settings->roll.kp, settings->roll.ki, settings->roll.kd,
+           settings->pitch.kp, settings->pitch.ki, settings->pitch.kd,
+           settings->yaw.kp, settings->yaw.ki, settings->yaw.kd,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_motor_protocol(void)
+{
+    printf("@CFG MOTOR_PROTOCOL DSHOT%u %u\n",
+           flight_settings_get()->dshot_rate_kbps,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_board_alignment(void)
+{
+    const flight_settings_t *settings = flight_settings_get();
+    printf("@CFG BOARD_ALIGNMENT %.2f %.2f %.2f %u\n",
+           settings->board_roll_deg,
+           settings->board_pitch_deg,
+           settings->board_yaw_deg,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_motor_direction(void)
+{
+    printf("@CFG MOTOR_DIRECTION %s %u\n",
+           flight_settings_get()->motor_direction_reversed != 0u
+               ? "REVERSED" : "NORMAL",
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_motor_idle(void)
+{
+    printf("@CFG MOTOR_IDLE %.2f %u\n",
+           flight_settings_get()->motor_idle_percent,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_rates(void)
+{
+    const flight_settings_t *settings = flight_settings_get();
+    printf("@CFG RATES %.1f %.1f %.1f %.3f %u\n",
+           settings->roll_rate_dps,
+           settings->pitch_rate_dps,
+           settings->yaw_rate_dps,
+           settings->rate_expo,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_feedforward(void)
+{
+    const flight_settings_t *settings = flight_settings_get();
+    printf("@CFG FEEDFORWARD %.6f %.6f %.6f %u\n",
+           settings->roll_feedforward,
+           settings->pitch_feedforward,
+           settings->yaw_feedforward,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_tpa(void)
+{
+    const flight_settings_t *settings = flight_settings_get();
+    printf("@CFG TPA %.3f %.1f %u\n",
+           settings->tpa_attenuation,
+           settings->tpa_breakpoint_percent,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_all_settings(void)
+{
+    send_pids();
+    send_motor_protocol();
+    send_board_alignment();
+    send_motor_direction();
+    send_motor_idle();
+    send_rates();
+    send_feedforward();
+    send_tpa();
+}
+
+static void send_flight_log_info(const sbus_frame_t *receiver)
+{
+    sbus_diagnostics_t diagnostics;
+    sbus_receiver_get_diagnostics(&diagnostics);
+    const unsigned int loss_reason =
+        receiver->failsafe ? 1u :
+        (!receiver->signal_valid || receiver->frame_lost ? 2u : 0u);
+    printf("@CFG FLIGHT_LOG_INFO %lu %u %u %u %lu %lu %lu %u\n",
+           (unsigned long)flight_log_count(),
+           FLIGHT_LOG_RATE_HZ,
+           flight_log_is_recording() ? 1u : 0u,
+           loss_reason,
+           (unsigned long)(receiver->frame_age_us / 1000u),
+           (unsigned long)diagnostics.valid_frames,
+           (unsigned long)(diagnostics.parity_errors +
+                           diagnostics.stop_errors),
+           0u);
+}
+
+static void process_command(const char *command,
+                            const sbus_frame_t *receiver,
+                            bool armed)
+{
+    if (strcmp(command, "HELLO") == 0) {
+        client_active = true;
+        last_client_activity_us = time_us_32();
+        printf("@CFG HELLO FlightCode 3 PICO2_W\n");
+        printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
+               "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
+               "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+               "TELEMETRY_EXT\n");
+        printf("@CFG IMU %s %u\n",
+               imu_get_name(),
+               imu_is_available() ? 1u : 0u);
+        send_all_settings();
+        return;
+    }
+    if (strcmp(command, "PING") == 0) {
+        client_active = true;
+        last_client_activity_us = time_us_32();
+        return;
+    }
+    if (strcmp(command, "BYE") == 0) {
+        client_active = false;
+        motor_test_enabled = false;
+        pid_simulation_enabled = false;
+        flight_log_set_inhibited(false);
+        return;
+    }
+    if (strcmp(command, "GET_PIDS") == 0) {
+        send_pids();
+        return;
+    }
+    if (strcmp(command, "GET_MOTOR_PROTOCOL") == 0 ||
+        strcmp(command, "GET_DSHOT") == 0) {
+        send_motor_protocol();
+        return;
+    }
+    if (strcmp(command, "GET_BOARD_ALIGNMENT") == 0) {
+        send_board_alignment();
+        return;
+    }
+    if (strcmp(command, "GET_MOTOR_DIRECTION") == 0) {
+        send_motor_direction();
+        return;
+    }
+    if (strcmp(command, "GET_MOTOR_IDLE") == 0) {
+        send_motor_idle();
+        return;
+    }
+    if (strcmp(command, "GET_RATES") == 0) {
+        send_rates();
+        return;
+    }
+    if (strcmp(command, "GET_FEEDFORWARD") == 0) {
+        send_feedforward();
+        return;
+    }
+    if (strcmp(command, "GET_TPA") == 0) {
+        send_tpa();
+        return;
+    }
+    if (strcmp(command, "GET_FLIGHT_LOG_INFO") == 0) {
+        send_flight_log_info(receiver);
+        return;
+    }
+
+    unsigned int log_offset;
+    unsigned int log_count;
+    if (sscanf(command, "GET_FLIGHT_LOG_CHUNK %u %u",
+               &log_offset, &log_count) == 2) {
+        if (flight_log_is_recording()) {
+            printf("@CFG ERROR FLIGHT_LOG_RECORDING\n");
+            return;
+        }
+        if (log_count > 4u) log_count = 4u;
+        uint32_t sent = 0u;
+        for (; sent < log_count; ++sent) {
+            flight_log_record_t item;
+            if (!flight_log_get((uint32_t)log_offset + sent, &item)) break;
+            printf("@CFG FLIGHT_LOG %lu %d %d %d %d %d %d %d %d %d "
+                   "%u %u %u %u %u %u %u\n",
+                   (unsigned long)((uint32_t)log_offset + sent),
+                   item.gyro[0], item.gyro[1], item.gyro[2],
+                   item.setpoint[0], item.setpoint[1], item.setpoint[2],
+                   item.pid[0], item.pid[1], item.pid[2],
+                   item.motor[0], item.motor[1],
+                   item.motor[2], item.motor[3],
+                   item.throttle, item.flags, item.loop_us);
+        }
+        printf("@CFG FLIGHT_LOG_CHUNK_END %lu\n",
+               (unsigned long)((uint32_t)log_offset + sent));
+        return;
+    }
+    if (strcmp(command, "PID_SIM_RESET") == 0 &&
+        pid_simulation_enabled) {
+        rate_controller_reset();
+        printf("@CFG OK PID_SIM_RESET\n");
+        return;
+    }
+    if (armed) {
+        printf("@CFG ERROR ARMED\n");
+        return;
+    }
+    if (strcmp(command, "CALIBRATE_GYRO") == 0) {
+        rate_controller_start_calibration();
+        printf("@CFG OK CALIBRATE_GYRO\n");
+        return;
+    }
+    if (strcmp(command, "ENTER_DFU") == 0) {
+        motor_test_enabled = false;
+        pid_simulation_enabled = false;
+        memset(motor_test_percent, 0, sizeof(motor_test_percent));
+        dfu_pending = true;
+        dfu_at_us = time_us_32() + DFU_DELAY_US;
+        printf("@CFG OK ENTER_DFU\n");
+        return;
+    }
+
+    unsigned int enable;
+    if (sscanf(command, "PID_SIM_ENABLE %u", &enable) == 1) {
+        pid_simulation_enabled = enable != 0u;
+        motor_test_enabled = false;
+        memset(motor_test_percent, 0, sizeof(motor_test_percent));
+        flight_log_set_inhibited(pid_simulation_enabled);
+        printf("@CFG OK PID_SIM_%s\n",
+               pid_simulation_enabled ? "ENABLED" : "DISABLED");
+        return;
+    }
+    if (sscanf(command, "MOTOR_TEST_ENABLE %u", &enable) == 1) {
+        if (enable == 0u) {
+            motor_test_enabled = false;
+            memset(motor_test_percent, 0, sizeof(motor_test_percent));
+            printf("@CFG OK MOTOR_TEST_DISABLED\n");
+        } else if (receiver->channel_us[ARM_CHANNEL_INDEX] > 2000u) {
+            printf("@CFG ERROR ARM_SWITCH\n");
+        } else {
+            pid_simulation_enabled = false;
+            flight_log_set_inhibited(false);
+            motor_test_enabled = true;
+            last_motor_test_us = time_us_32();
+            printf("@CFG OK MOTOR_TEST_ENABLED\n");
+        }
+        return;
+    }
+
+    float test[4];
+    if (sscanf(command, "MOTOR_TEST %f %f %f %f",
+               &test[0], &test[1], &test[2], &test[3]) == 4) {
+        if (!motor_test_enabled) {
+            printf("@CFG ERROR MOTOR_TEST_DISABLED\n");
+            return;
+        }
+        for (uint8_t i = 0u; i < 4u; ++i) {
+            if (test[i] < 0.0f || test[i] > 100.0f) {
+                printf("@CFG ERROR MOTOR_TEST_RANGE\n");
+                return;
+            }
+            motor_test_percent[i] = (uint8_t)(test[i] + 0.5f);
+        }
+        last_motor_test_us = time_us_32();
+        return;
+    }
+
+    flight_settings_t settings = *flight_settings_get();
+    if (sscanf(command, "SET_TPA %f %f",
+               &settings.tpa_attenuation,
+               &settings.tpa_breakpoint_percent) == 2) {
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_TPA\n"
+                   : "@CFG ERROR INVALID_TPA\n");
+        send_tpa();
+        return;
+    }
+    if (sscanf(command, "SET_FEEDFORWARD %f %f %f",
+               &settings.roll_feedforward,
+               &settings.pitch_feedforward,
+               &settings.yaw_feedforward) == 3) {
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_FEEDFORWARD\n"
+                   : "@CFG ERROR INVALID_FEEDFORWARD\n");
+        send_feedforward();
+        return;
+    }
+    if (sscanf(command, "SET_RATES %f %f %f %f",
+               &settings.roll_rate_dps,
+               &settings.pitch_rate_dps,
+               &settings.yaw_rate_dps,
+               &settings.rate_expo) == 4) {
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_RATES\n"
+                   : "@CFG ERROR INVALID_RATES\n");
+        send_rates();
+        return;
+    }
+    if (sscanf(command, "SET_MOTOR_IDLE %f",
+               &settings.motor_idle_percent) == 1) {
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_MOTOR_IDLE\n"
+                   : "@CFG ERROR INVALID_MOTOR_IDLE\n");
+        send_motor_idle();
+        return;
+    }
+
+    char name[24];
+    if (sscanf(command, "SET_MOTOR_DIRECTION %23s", name) == 1) {
+        if (strcmp(name, "NORMAL") == 0) {
+            settings.motor_direction_reversed = 0u;
+        } else if (strcmp(name, "REVERSED") == 0) {
+            settings.motor_direction_reversed = 1u;
+        } else {
+            printf("@CFG ERROR INVALID_MOTOR_DIRECTION\n");
+            return;
+        }
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_MOTOR_DIRECTION\n"
+                   : "@CFG ERROR SET_MOTOR_DIRECTION\n");
+        send_motor_direction();
+        return;
+    }
+    if (sscanf(command, "SET_BOARD_ALIGNMENT %f %f %f",
+               &settings.board_roll_deg,
+               &settings.board_pitch_deg,
+               &settings.board_yaw_deg) == 3) {
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_BOARD_ALIGNMENT\n"
+                   : "@CFG ERROR INVALID_BOARD_ALIGNMENT\n");
+        rate_controller_start_calibration();
+        send_board_alignment();
+        return;
+    }
+    if (sscanf(command,
+               "SET_PIDS %f %f %f %f %f %f %f %f %f",
+               &settings.roll.kp, &settings.roll.ki, &settings.roll.kd,
+               &settings.pitch.kp, &settings.pitch.ki, &settings.pitch.kd,
+               &settings.yaw.kp, &settings.yaw.ki, &settings.yaw.kd) == 9) {
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_PIDS\n"
+                   : "@CFG ERROR INVALID_PIDS\n");
+        rate_controller_reset();
+        send_pids();
+        return;
+    }
+    if (strcmp(command, "SAVE_PIDS") == 0 ||
+        strcmp(command, "SAVE_SETTINGS") == 0) {
+        printf(flight_settings_save()
+                   ? "@CFG OK SAVE_SETTINGS\n"
+                   : "@CFG ERROR SAVE_SETTINGS\n");
+        send_all_settings();
+        return;
+    }
+    if (strcmp(command, "RESET_PIDS") == 0) {
+        flight_settings_reset_tuning_defaults(&settings);
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK RESET_PIDS\n"
+                   : "@CFG ERROR RESET_PIDS\n");
+        rate_controller_reset();
+        send_pids();
+        send_rates();
+        send_feedforward();
+        send_tpa();
+        return;
+    }
+    if (sscanf(command, "SET_MOTOR_PROTOCOL %23s", name) == 1) {
+        unsigned int rate;
+        if (sscanf(name, "DSHOT%u", &rate) != 1 ||
+            !esc_controller_set_dshot_rate(rate)) {
+            printf("@CFG ERROR INVALID_MOTOR_PROTOCOL\n");
+            return;
+        }
+        settings.dshot_rate_kbps = rate;
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_MOTOR_PROTOCOL\n"
+                   : "@CFG ERROR SET_MOTOR_PROTOCOL\n");
+        send_motor_protocol();
+        return;
+    }
+    unsigned int rate;
+    if (sscanf(command, "SET_DSHOT %u", &rate) == 1) {
+        if (!esc_controller_set_dshot_rate(rate)) {
+            printf("@CFG ERROR DSHOT_RATE\n");
+            return;
+        }
+        settings.dshot_rate_kbps = rate;
+        flight_settings_set(&settings);
+        send_motor_protocol();
+        return;
+    }
+    printf("@CFG ERROR UNKNOWN_COMMAND\n");
+}
+
+void config_protocol_init(void)
+{
+    input_length = 0u;
+    client_active = false;
+    last_client_activity_us = 0u;
+    motor_test_enabled = false;
+    pid_simulation_enabled = false;
+    memset(motor_test_percent, 0, sizeof(motor_test_percent));
+    dfu_pending = false;
+}
+
+void config_protocol_update(const sbus_frame_t *receiver, bool armed)
+{
+    int character;
+    while ((character = getchar_timeout_us(0u)) != PICO_ERROR_TIMEOUT) {
+        if (character == '\r') continue;
+        if (character == '\n') {
+            input_line[input_length] = '\0';
+            if (input_length > 0u) {
+                process_command(input_line, receiver, armed);
+            }
+            input_length = 0u;
+        } else if (input_length < CONFIG_LINE_LENGTH - 1u) {
+            input_line[input_length++] = (char)character;
+        } else {
+            input_length = 0u;
+            printf("@CFG ERROR LINE_TOO_LONG\n");
+        }
+    }
+
+    if (dfu_pending && (int32_t)(time_us_32() - dfu_at_us) >= 0) {
+        reset_usb_boot(0u, 0u);
+    }
+    if (client_active &&
+        time_us_32() - last_client_activity_us >
+            CONFIG_CLIENT_TIMEOUT_US) {
+        client_active = false;
+        motor_test_enabled = false;
+        pid_simulation_enabled = false;
+        flight_log_set_inhibited(false);
+    }
+}
+
+bool config_protocol_is_client_active(void)
+{
+    return client_active;
+}
+
+bool config_protocol_motor_output_suppressed(void)
+{
+    return pid_simulation_enabled;
+}
+
+bool config_protocol_pid_simulation_enabled(void)
+{
+    return pid_simulation_enabled;
+}
+
+bool config_protocol_get_motor_test(const sbus_frame_t *receiver,
+                                    uint8_t output[4])
+{
+    if (!motor_test_enabled ||
+        receiver->channel_us[ARM_CHANNEL_INDEX] > 2000u ||
+        time_us_32() - last_motor_test_us > MOTOR_TEST_TIMEOUT_US) {
+        motor_test_enabled = false;
+        memset(motor_test_percent, 0, sizeof(motor_test_percent));
+        return false;
+    }
+    memcpy(output, motor_test_percent, sizeof(motor_test_percent));
+    return true;
+}
+
+void config_protocol_send_telemetry(const sbus_frame_t *receiver,
+                                    const imu_sample_t *imu,
+                                    bool armed,
+                                    float loop_frequency_hz,
+                                    uint32_t max_loop_period_us,
+                                    const rate_controller_output_t *control)
+{
+    if (!client_active) return;
+
+    imu_sample_t corrected;
+    rate_controller_get_corrected_imu(imu, &corrected);
+    printf("@CFG TELEMETRY %lu %u %u %.1f "
+           "%.3f %.3f %.3f %.3f %.3f %.3f",
+           (unsigned long)time_us_32(),
+           receiver->signal_valid ? 1u : 0u,
+           armed ? 1u : 0u,
+           loop_frequency_hz,
+           corrected.gyro_x_dps,
+           corrected.gyro_y_dps,
+           corrected.gyro_z_dps,
+           corrected.accel_x_g,
+           corrected.accel_y_g,
+           corrected.accel_z_g);
+    for (uint8_t i = 0u; i < SBUS_CHANNEL_COUNT; ++i) {
+        printf(" %u", receiver->channel_us[i]);
+    }
+    for (uint8_t i = 0u; i < 4u; ++i) {
+        printf(" %.2f", control->motor_percent[i]);
+    }
+    printf(" %u %lu %.3f\n",
+           rate_controller_is_calibrated() ? 1u : 0u,
+           (unsigned long)max_loop_period_us,
+           imu->gyro_y_dps);
+}

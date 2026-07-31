@@ -1,0 +1,193 @@
+#include "flight_settings.h"
+
+#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "hardware/flash.h"
+#include "hardware/sync.h"
+#include "pico/stdlib.h"
+
+#define SETTINGS_MAGIC 0x46465049u
+#define SETTINGS_VERSION 4u
+#define SETTINGS_LEGACY_VERSION 3u
+#define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
+
+typedef struct {
+    pid_axis_t roll;
+    pid_axis_t pitch;
+    pid_axis_t yaw;
+    uint32_t dshot_rate_kbps;
+} legacy_settings_v3_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v3_t settings;
+    uint32_t checksum;
+} legacy_record_v3_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    flight_settings_t settings;
+    uint32_t checksum;
+} settings_record_t;
+
+static flight_settings_t current_settings;
+static bool settings_saved;
+
+static uint32_t hash_record(const void *record, size_t length)
+{
+    const uint8_t *bytes = (const uint8_t *)record;
+    uint32_t hash = 2166136261u;
+    for (size_t i = 0u; i < length; ++i) {
+        hash = (hash ^ bytes[i]) * 16777619u;
+    }
+    return hash;
+}
+
+static bool finite_range(float value, float minimum, float maximum)
+{
+    return isfinite(value) && value >= minimum && value <= maximum;
+}
+
+static bool valid_pid(const pid_axis_t *pid)
+{
+    return finite_range(pid->kp, 0.0f, 1000.0f) &&
+           finite_range(pid->ki, 0.0f, 1000.0f) &&
+           finite_range(pid->kd, 0.0f, 1000.0f);
+}
+
+static bool valid_settings(const flight_settings_t *settings)
+{
+    if (settings == NULL) {
+        return false;
+    }
+    const bool valid_dshot =
+        settings->dshot_rate_kbps == 150u ||
+        settings->dshot_rate_kbps == 300u ||
+        settings->dshot_rate_kbps == 600u;
+    return valid_pid(&settings->roll) &&
+           valid_pid(&settings->pitch) &&
+           valid_pid(&settings->yaw) &&
+           valid_dshot &&
+           finite_range(settings->board_roll_deg, -180.0f, 180.0f) &&
+           finite_range(settings->board_pitch_deg, -180.0f, 180.0f) &&
+           finite_range(settings->board_yaw_deg, -180.0f, 180.0f) &&
+           settings->motor_direction_reversed <= 1u &&
+           finite_range(settings->motor_idle_percent, 1.0f, 10.0f) &&
+           finite_range(settings->roll_rate_dps, 100.0f, 1200.0f) &&
+           finite_range(settings->pitch_rate_dps, 100.0f, 1200.0f) &&
+           finite_range(settings->yaw_rate_dps, 100.0f, 1200.0f) &&
+           finite_range(settings->rate_expo, 0.0f, 0.9f) &&
+           finite_range(settings->roll_feedforward, 0.0f, 1.0f) &&
+           finite_range(settings->pitch_feedforward, 0.0f, 1.0f) &&
+           finite_range(settings->yaw_feedforward, 0.0f, 1.0f) &&
+           finite_range(settings->tpa_attenuation, 0.0f, 1.0f) &&
+           finite_range(settings->tpa_breakpoint_percent, 0.0f, 100.0f);
+}
+
+void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
+{
+    settings->roll = (pid_axis_t){0.090f, 0.200f, 0.0012f};
+    settings->pitch = (pid_axis_t){0.090f, 0.200f, 0.0012f};
+    settings->yaw = (pid_axis_t){0.120f, 0.200f, 0.0000f};
+    settings->roll_rate_dps = 500.0f;
+    settings->pitch_rate_dps = 500.0f;
+    settings->yaw_rate_dps = 400.0f;
+    settings->rate_expo = 0.35f;
+    settings->roll_feedforward = 0.025f;
+    settings->pitch_feedforward = 0.025f;
+    settings->yaw_feedforward = 0.015f;
+    settings->tpa_attenuation = 0.0f;
+    settings->tpa_breakpoint_percent = 65.0f;
+}
+
+void flight_settings_reset_defaults(void)
+{
+    current_settings = (flight_settings_t){
+        .dshot_rate_kbps = 300u,
+        .motor_idle_percent = 3.0f,
+    };
+    flight_settings_reset_tuning_defaults(&current_settings);
+    settings_saved = false;
+}
+
+void flight_settings_init(void)
+{
+    const uint8_t *flash =
+        (const uint8_t *)(XIP_BASE + SETTINGS_FLASH_OFFSET);
+    const settings_record_t *stored = (const settings_record_t *)flash;
+    if (stored->magic == SETTINGS_MAGIC &&
+        stored->version == SETTINGS_VERSION &&
+        stored->checksum ==
+            hash_record(stored, offsetof(settings_record_t, checksum)) &&
+        valid_settings(&stored->settings)) {
+        current_settings = stored->settings;
+        settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v3_t *legacy = (const legacy_record_v3_t *)flash;
+    if (legacy->magic == SETTINGS_MAGIC &&
+        legacy->version == SETTINGS_LEGACY_VERSION &&
+        legacy->checksum ==
+            hash_record(legacy, offsetof(legacy_record_v3_t, checksum))) {
+        flight_settings_reset_defaults();
+        current_settings.roll = legacy->settings.roll;
+        current_settings.pitch = legacy->settings.pitch;
+        current_settings.yaw = legacy->settings.yaw;
+        current_settings.dshot_rate_kbps = legacy->settings.dshot_rate_kbps;
+        settings_saved = false;
+        return;
+    }
+
+    flight_settings_reset_defaults();
+}
+
+const flight_settings_t *flight_settings_get(void)
+{
+    return &current_settings;
+}
+
+bool flight_settings_set(const flight_settings_t *settings)
+{
+    if (!valid_settings(settings)) {
+        return false;
+    }
+    current_settings = *settings;
+    settings_saved = false;
+    return true;
+}
+
+bool flight_settings_save(void)
+{
+    if (!valid_settings(&current_settings)) {
+        return false;
+    }
+    settings_record_t record = {
+        .magic = SETTINGS_MAGIC,
+        .version = SETTINGS_VERSION,
+        .settings = current_settings,
+    };
+    record.checksum =
+        hash_record(&record, offsetof(settings_record_t, checksum));
+
+    uint8_t page[FLASH_PAGE_SIZE];
+    memset(page, 0xff, sizeof(page));
+    memcpy(page, &record, sizeof(record));
+
+    const uint32_t interrupts = save_and_disable_interrupts();
+    flash_range_erase(SETTINGS_FLASH_OFFSET, FLASH_SECTOR_SIZE);
+    flash_range_program(SETTINGS_FLASH_OFFSET, page, FLASH_PAGE_SIZE);
+    restore_interrupts(interrupts);
+    settings_saved = true;
+    return true;
+}
+
+bool flight_settings_are_saved(void)
+{
+    return settings_saved;
+}

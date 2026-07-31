@@ -1,0 +1,31 @@
+.program sbus_rx
+
+; SBUS: 100 kbit/s, 8E2, segnale fisico invertito.
+; La state machine gira a 8 istruzioni per bit, acquisisce gli 8 bit dati
+; e poi salta parita' e stop prima di cercare il byte successivo.
+
+    wait 1 pin 0
+    set x, 7 [10]
+bit_loop:
+    in pins, 1
+    jmp x-- bit_loop [6]
+    push block
+    nop [15]
+
+% c-sdk {
+static inline void sbus_rx_program_init(PIO pio, uint sm, uint offset,
+                                        uint pin, float baud)
+{
+    pio_sm_config config = sbus_rx_program_get_default_config(offset);
+    sm_config_set_in_pins(&config, pin);
+    sm_config_set_jmp_pin(&config, pin);
+    sm_config_set_in_shift(&config, true, false, 32);
+    sm_config_set_fifo_join(&config, PIO_FIFO_JOIN_RX);
+    sm_config_set_clkdiv(&config, (float)clock_get_hz(clk_sys) / (8.0f * baud));
+
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
+    pio_sm_init(pio, sm, offset, &config);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

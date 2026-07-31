@@ -1,0 +1,25 @@
+#ifndef FLIGHTCODEPI_IMU_CONFIG_H
+#define FLIGHTCODEPI_IMU_CONFIG_H
+
+#define IMU_BACKEND_MPU6050_I2C 1
+#define IMU_BACKEND_MPU6500_SPI 2
+
+#define IMU_BACKEND IMU_BACKEND_MPU6500_SPI
+
+// Configurazione corrente: MPU6050 su I2C0.
+#define IMU_I2C_INDEX 0u
+#define IMU_I2C_SDA_GPIO 4u
+#define IMU_I2C_SCL_GPIO 5u
+#define IMU_I2C_BAUD_HZ 400000u
+#define IMU_I2C_ADDRESS 0x68u
+
+// MPU6500/MPU9250 su SPI0, gruppo di pin nella zona bassa destra del Pico.
+#define IMU_SPI_INDEX 0u
+#define IMU_SPI_MISO_GPIO 16u
+#define IMU_SPI_CS_GPIO 17u
+#define IMU_SPI_SCK_GPIO 18u
+#define IMU_SPI_MOSI_GPIO 19u
+#define IMU_SPI_INIT_BAUD_HZ 1000000u
+#define IMU_SPI_BAUD_HZ 10000000u
+
+#endif

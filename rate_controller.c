@@ -1,0 +1,298 @@
+#include "rate_controller.h"
+
+#include <math.h>
+#include <string.h>
+
+#include "flight_control_config.h"
+#include "flight_settings.h"
+
+#define CALIBRATION_MAX_VARIATION_DPS 3.0f
+#define GYRO_LPF_HZ 150.0f
+#define DTERM_LPF_HZ 100.0f
+
+typedef struct {
+    float integral;
+    float previous_rate;
+    float dterm;
+} pid_state_t;
+
+typedef struct {
+    float value;
+    bool initialized;
+} pt1_filter_t;
+
+static pid_state_t roll_pid;
+static pid_state_t pitch_pid;
+static pid_state_t yaw_pid;
+static pt1_filter_t gyro_filter[3];
+static float gyro_bias_x;
+static float gyro_bias_y;
+static float gyro_bias_z;
+static float calibration_sum_x;
+static float calibration_sum_y;
+static float calibration_sum_z;
+static float calibration_reference_x;
+static float calibration_reference_y;
+static float calibration_reference_z;
+static uint16_t calibration_samples;
+static uint32_t previous_sample_time_us;
+static bool calibrated;
+static bool mixer_saturated;
+
+static float clamp_float(float value, float minimum, float maximum)
+{
+    return value < minimum ? minimum : (value > maximum ? maximum : value);
+}
+
+static float pt1(pt1_filter_t *filter, float input, float cutoff_hz, float dt)
+{
+    if (!filter->initialized) {
+        filter->value = input;
+        filter->initialized = true;
+        return input;
+    }
+    const float rc = 1.0f / (2.0f * 3.14159265358979323846f * cutoff_hz);
+    filter->value += (dt / (rc + dt)) * (input - filter->value);
+    return filter->value;
+}
+
+static float rate_setpoint(int8_t percent, float maximum, float expo)
+{
+    const float x = clamp_float((float)percent / 100.0f, -1.0f, 1.0f);
+    return ((1.0f - expo) * x + expo * x * x * x) * maximum;
+}
+
+static float pid_update(pid_state_t *state,
+                        const pid_axis_t *gains,
+                        float setpoint,
+                        float measured_rate,
+                        float feedforward,
+                        float dt,
+                        float output_limit,
+                        float tpa_factor)
+{
+    const float error = setpoint - measured_rate;
+    if (!mixer_saturated || state->integral * error < 0.0f) {
+        state->integral = clamp_float(
+            state->integral + gains->ki * error * dt,
+            -PID_INTEGRAL_LIMIT_PERCENT,
+            PID_INTEGRAL_LIMIT_PERCENT);
+    }
+
+    const float derivative =
+        -(measured_rate - state->previous_rate) / dt;
+    state->previous_rate = measured_rate;
+    const float d_rc =
+        1.0f / (2.0f * 3.14159265358979323846f * DTERM_LPF_HZ);
+    state->dterm += (dt / (d_rc + dt)) * (derivative - state->dterm);
+
+    return clamp_float(gains->kp * tpa_factor * error +
+                           state->integral +
+                           gains->kd * tpa_factor * state->dterm +
+                           feedforward * setpoint,
+                       -output_limit,
+                       output_limit);
+}
+
+void rate_controller_reset(void)
+{
+    memset(&roll_pid, 0, sizeof(roll_pid));
+    memset(&pitch_pid, 0, sizeof(pitch_pid));
+    memset(&yaw_pid, 0, sizeof(yaw_pid));
+    memset(gyro_filter, 0, sizeof(gyro_filter));
+    mixer_saturated = false;
+}
+
+void rate_controller_start_calibration(void)
+{
+    gyro_bias_x = gyro_bias_y = gyro_bias_z = 0.0f;
+    calibration_sum_x = calibration_sum_y = calibration_sum_z = 0.0f;
+    calibration_reference_x =
+        calibration_reference_y = calibration_reference_z = 0.0f;
+    calibration_samples = 0u;
+    previous_sample_time_us = 0u;
+    calibrated = false;
+    rate_controller_reset();
+}
+
+void rate_controller_init(void)
+{
+    rate_controller_start_calibration();
+}
+
+static void update_calibration(const imu_sample_t *imu)
+{
+    if (calibration_samples == 0u) {
+        calibration_reference_x = imu->gyro_x_dps;
+        calibration_reference_y = imu->gyro_y_dps;
+        calibration_reference_z = imu->gyro_z_dps;
+    } else if (fabsf(imu->gyro_x_dps - calibration_reference_x) >=
+                   CALIBRATION_MAX_VARIATION_DPS ||
+               fabsf(imu->gyro_y_dps - calibration_reference_y) >=
+                   CALIBRATION_MAX_VARIATION_DPS ||
+               fabsf(imu->gyro_z_dps - calibration_reference_z) >=
+                   CALIBRATION_MAX_VARIATION_DPS) {
+        calibration_sum_x = calibration_sum_y = calibration_sum_z = 0.0f;
+        calibration_samples = 0u;
+        return;
+    }
+
+    calibration_sum_x += imu->gyro_x_dps;
+    calibration_sum_y += imu->gyro_y_dps;
+    calibration_sum_z += imu->gyro_z_dps;
+    ++calibration_samples;
+    if (calibration_samples >= GYRO_CALIBRATION_SAMPLES) {
+        gyro_bias_x = calibration_sum_x / (float)calibration_samples;
+        gyro_bias_y = calibration_sum_y / (float)calibration_samples;
+        gyro_bias_z = calibration_sum_z / (float)calibration_samples;
+        calibrated = true;
+        rate_controller_reset();
+    }
+}
+
+bool rate_controller_update(const imu_sample_t *imu,
+                            bool armed,
+                            uint8_t throttle_percent,
+                            int8_t roll_percent,
+                            int8_t pitch_percent,
+                            int8_t yaw_percent,
+                            rate_controller_output_t *output)
+{
+    if (imu == NULL || output == NULL || !imu->valid) {
+        return false;
+    }
+    if (imu->sample_time_us == previous_sample_time_us) {
+        return armed && calibrated;
+    }
+
+    float dt = 0.001f;
+    if (previous_sample_time_us != 0u) {
+        dt = (float)(imu->sample_time_us - previous_sample_time_us) /
+             1000000.0f;
+        dt = clamp_float(dt, 0.00005f, 0.005f);
+    }
+    previous_sample_time_us = imu->sample_time_us;
+
+    if (!calibrated) {
+        memset(output, 0, sizeof(*output));
+        if (!armed) {
+            update_calibration(imu);
+        }
+        return false;
+    }
+
+    const flight_settings_t *settings = flight_settings_get();
+    output->roll_rate_dps =
+        pt1(&gyro_filter[0], imu->gyro_x_dps - gyro_bias_x,
+            GYRO_LPF_HZ, dt) * GYRO_ROLL_SIGN;
+    output->pitch_rate_dps =
+        pt1(&gyro_filter[1], imu->gyro_y_dps - gyro_bias_y,
+            GYRO_LPF_HZ, dt) * GYRO_PITCH_SIGN;
+    output->yaw_rate_dps =
+        pt1(&gyro_filter[2], imu->gyro_z_dps - gyro_bias_z,
+            GYRO_LPF_HZ, dt) * GYRO_YAW_SIGN;
+    output->roll_setpoint_dps =
+        rate_setpoint(roll_percent, settings->roll_rate_dps,
+                      settings->rate_expo);
+    output->pitch_setpoint_dps =
+        rate_setpoint(pitch_percent, settings->pitch_rate_dps,
+                      settings->rate_expo);
+    output->yaw_setpoint_dps =
+        rate_setpoint(yaw_percent, settings->yaw_rate_dps,
+                      settings->rate_expo);
+
+    if (!armed) {
+        rate_controller_reset();
+        memset(output->motor_percent, 0, sizeof(output->motor_percent));
+        output->roll_pid_percent = 0.0f;
+        output->pitch_pid_percent = 0.0f;
+        output->yaw_pid_percent = 0.0f;
+        output->mixer_saturated = false;
+        return false;
+    }
+
+    const float throttle = clamp_float((float)throttle_percent, 0.0f, 100.0f);
+    float tpa_factor = 1.0f;
+    if (settings->tpa_attenuation > 0.0f &&
+        throttle > settings->tpa_breakpoint_percent &&
+        settings->tpa_breakpoint_percent < 100.0f) {
+        tpa_factor = 1.0f - settings->tpa_attenuation *
+            (throttle - settings->tpa_breakpoint_percent) /
+            (100.0f - settings->tpa_breakpoint_percent);
+    }
+
+    output->roll_pid_percent =
+        pid_update(&roll_pid, &settings->roll,
+                   output->roll_setpoint_dps, output->roll_rate_dps,
+                   settings->roll_feedforward, dt,
+                   PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor);
+    output->pitch_pid_percent =
+        pid_update(&pitch_pid, &settings->pitch,
+                   output->pitch_setpoint_dps, output->pitch_rate_dps,
+                   settings->pitch_feedforward, dt,
+                   PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor);
+    output->yaw_pid_percent =
+        pid_update(&yaw_pid, &settings->yaw,
+                   output->yaw_setpoint_dps, output->yaw_rate_dps,
+                   settings->yaw_feedforward, dt,
+                   PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor);
+
+    const float mixer_yaw =
+        settings->motor_direction_reversed != 0u
+            ? -output->yaw_pid_percent
+            : output->yaw_pid_percent;
+    float correction[4] = {
+        -output->roll_pid_percent + output->pitch_pid_percent - mixer_yaw,
+        -output->roll_pid_percent - output->pitch_pid_percent + mixer_yaw,
+        output->roll_pid_percent + output->pitch_pid_percent + mixer_yaw,
+        output->roll_pid_percent - output->pitch_pid_percent - mixer_yaw,
+    };
+    float minimum = correction[0];
+    float maximum = correction[0];
+    for (uint8_t i = 1u; i < 4u; ++i) {
+        minimum = fminf(minimum, correction[i]);
+        maximum = fmaxf(maximum, correction[i]);
+    }
+
+    const float available = 100.0f - settings->motor_idle_percent;
+    const float span = maximum - minimum;
+    const float scale = span > available ? available / span : 1.0f;
+    minimum *= scale;
+    maximum *= scale;
+    const float requested_base =
+        settings->motor_idle_percent + throttle * available / 100.0f;
+    const float base = clamp_float(requested_base,
+                                   settings->motor_idle_percent - minimum,
+                                   100.0f - maximum);
+    mixer_saturated = scale < 0.999f || fabsf(base - requested_base) > 0.001f;
+    output->mixer_saturated = mixer_saturated;
+    for (uint8_t i = 0u; i < 4u; ++i) {
+        output->motor_percent[i] =
+            clamp_float(base + correction[i] * scale, 0.0f, 100.0f);
+    }
+    return true;
+}
+
+bool rate_controller_is_calibrated(void)
+{
+    return calibrated;
+}
+
+uint16_t rate_controller_get_calibration_samples(void)
+{
+    return calibration_samples;
+}
+
+void rate_controller_get_corrected_imu(const imu_sample_t *raw,
+                                       imu_sample_t *corrected)
+{
+    *corrected = *raw;
+    if (calibrated) {
+        corrected->gyro_x_dps =
+            (corrected->gyro_x_dps - gyro_bias_x) * GYRO_ROLL_SIGN;
+        corrected->gyro_y_dps =
+            (corrected->gyro_y_dps - gyro_bias_y) * GYRO_PITCH_SIGN;
+        corrected->gyro_z_dps =
+            (corrected->gyro_z_dps - gyro_bias_z) * GYRO_YAW_SIGN;
+    }
+}
