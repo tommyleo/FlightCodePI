@@ -10,6 +10,10 @@
 #include "rate_controller.h"
 #include "sbus_receiver.h"
 
+#if defined(CYW43_WL_GPIO_LED_PIN)
+#include "pico/cyw43_arch.h"
+#endif
+
 #define SBUS_INPUT_GPIO 0u
 #define ESC_1_GPIO 1u
 #define ESC_2_GPIO 2u
@@ -41,6 +45,36 @@ static int8_t roll_percent = 0;
 static int8_t pitch_percent = 0;
 static rate_controller_output_t rate_output;
 static bool arm_switch_was_low;
+static bool status_led_available;
+static bool status_led_on;
+
+static void status_led_init(void)
+{
+#if defined(CYW43_WL_GPIO_LED_PIN)
+    status_led_available = cyw43_arch_init() == 0;
+#elif defined(PICO_DEFAULT_LED_PIN)
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    status_led_available = true;
+#else
+    status_led_available = false;
+#endif
+    status_led_on = false;
+}
+
+static void status_led_toggle(void)
+{
+    if (!status_led_available) {
+        return;
+    }
+
+    status_led_on = !status_led_on;
+#if defined(CYW43_WL_GPIO_LED_PIN)
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, status_led_on);
+#elif defined(PICO_DEFAULT_LED_PIN)
+    gpio_put(PICO_DEFAULT_LED_PIN, status_led_on);
+#endif
+}
 
 static void update_buzzer(const sbus_frame_t *receiver)
 {
@@ -234,6 +268,7 @@ static void flight_control_step(const sbus_frame_t *receiver,
 int main(void)
 {
     stdio_init_all();
+    status_led_init();
     flight_settings_init();
     esc_controller_set_dshot_rate(
         flight_settings_get()->dshot_rate_kbps);
@@ -262,6 +297,7 @@ int main(void)
     absolute_time_t next_loop =
         delayed_by_us(get_absolute_time(), FLIGHT_LOOP_PERIOD_US);
     absolute_time_t next_telemetry = delayed_by_ms(next_loop, 40u);
+    absolute_time_t next_status_led = delayed_by_ms(next_loop, 1000u);
     uint32_t loop_measurement_start_us = time_us_32();
     uint32_t loop_measurement_count = 0u;
     float loop_frequency_hz = (float)FLIGHT_LOOP_HZ;
@@ -322,6 +358,11 @@ int main(void)
                                            &rate_output);
             next_telemetry = delayed_by_ms(next_telemetry, 40u);
             maximum_loop_period_us = 0u;
+        }
+
+        if (time_reached(next_status_led)) {
+            status_led_toggle();
+            next_status_led = delayed_by_ms(next_status_led, 1000u);
         }
 
         if (time_reached(next_loop)) {

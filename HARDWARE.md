@@ -1,11 +1,33 @@
 # FlightCodePI hardware connections
 
-Reference orientation: Raspberry Pi Pico 2 W viewed from above, with the USB
-connector at the top.
+Reference orientation: Raspberry Pi Pico 2 or Pico 2 W viewed from above, with
+the USB connector at the top.
+
+## Complete pin assignment
+
+| Function | Pico GPIO | Physical pin | Direction | Notes |
+|---|---:|---:|---|---|
+| SBUS receiver signal | GP0 | 1 | Input | Inverted SBUS, 100 kbit/s |
+| Motor 1 ESC signal | GP1 | 2 | Output | Rear right, DSHOT |
+| Motor 2 ESC signal | GP2 | 4 | Output | Front right, DSHOT |
+| Motor 3 ESC signal | GP3 | 5 | Output | Rear left, DSHOT |
+| Motor 4 ESC signal | GP6 | 9 | Output | Front left, DSHOT |
+| Active buzzer control | GP7 | 10 | Output | Active high, controlled by CH5 |
+| IMU MISO / AD0 | GP16 | 21 | Input | SPI0 RX |
+| IMU chip select / NCS | GP17 | 22 | Output | Active low |
+| IMU clock / SCL | GP18 | 24 | Output | SPI0 SCK |
+| IMU MOSI / SDA | GP19 | 25 | Output | SPI0 TX |
+| IMU power | 3V3(OUT) | 36 | Power | 3.3 V only |
+| Common ground | GND | 3, 8, 13, 18, 23, 28, 33, 38 | Power | Receiver, ESCs, IMU and Pico must share ground |
+
+Detailed guides:
+
+- [SBUS receiver wiring](docs/SBUS_RECEIVER.md)
+- [Motors and ESC wiring](docs/MOTORS_AND_ESC.md)
 
 ## MPU6500 / MPU9250 / MPU9255 (SPI0)
 
-| IMU module | Pico 2 W | Physical pin |
+| IMU module | Pico 2 / Pico 2 W | Physical pin |
 |---|---|---:|
 | VCC | 3V3(OUT) | 36 |
 | GND | GND | 23 |
@@ -25,3 +47,27 @@ Mount the IMU flat and firmly, away from motor wiring. As an initial
 orientation, point the printed X-axis arrow toward the front of the quad and
 verify the direction of all three axes in the Configurator before fitting the
 propellers.
+
+## Buzzer
+
+GP7, physical pin 10, becomes high when receiver channel 5 is above 2000 us.
+Use a 3.3 V active buzzer only if its current is within the GPIO limit. For a
+5 V or higher-current buzzer, drive it through a transistor or MOSFET with a
+flyback diode when required. Always connect the driver ground to Pico GND.
+
+## Power and grounding
+
+Do not power motors or ESC power stages from the Pico. Power them from the
+battery and power-distribution system. If an ESC/BEC powers the Pico, use a
+clean regulated supply suitable for VSYS and never feed that supply into the
+3V3(OUT) pin.
+
+All signal devices must share a common ground. A practical layout uses one
+ground close to GP0 for the receiver and grounds close to the motor signal pins
+for the ESC signal returns.
+
+## Currently unused GPIOs
+
+GP4, GP5, GP8-GP15, GP20-GP22 and GP26-GP28 are not assigned by the current
+firmware. Do not connect new peripherals to them without also checking future
+firmware changes and the Pico board documentation.

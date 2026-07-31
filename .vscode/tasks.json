@@ -20,6 +20,8 @@
         {
             "label": "Run Project",
             "type": "process",
+            "dependsOn": "Compile Project",
+            "dependsOrder": "sequence",
             "command": "${env:HOME}/.pico-sdk/picotool/2.3.0/picotool/picotool",
             "args": [
                 "load",

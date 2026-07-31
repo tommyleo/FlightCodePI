@@ -1,6 +1,7 @@
 # FlightCodePI
 
-Quad X rate-mode flight controller for Raspberry Pi Pico 2 W, compatible with
+Quad X rate-mode flight controller for Raspberry Pi Pico 2 and Pico 2 W,
+compatible with
 the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 
 ## Features
@@ -19,6 +20,25 @@ the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 - extended telemetry and receiver diagnostics;
 - persistent 200 Hz flight log with 4,096 samples;
 - USB BOOTSEL restart from the configurator.
+- onboard status LED toggled every second as a firmware heartbeat.
+
+## Supported boards
+
+The same flight-control code supports both `pico2` and `pico2_w`. Wi-Fi is not
+used. On Pico 2 W, the CYW43 device is initialized only to control the onboard
+LED.
+
+The default CMake target is Pico 2. Select the board when configuring a build:
+
+```text
+cmake -S . -B build-pico2 -DPICO_BOARD=pico2
+cmake -S . -B build-pico2-w -DPICO_BOARD=pico2_w
+```
+
+From the Raspberry Pi Pico VS Code extension, **Run Project (USB)** invokes the
+internal `Run Project` task. It first compiles the project and then loads it
+through `picotool`. The board must be connected by USB; the first installation
+may require holding BOOTSEL while connecting it.
 
 ## Persistent storage
 
@@ -39,4 +59,6 @@ The firmware requires:
 During PID simulation, control calculations remain active while all four
 physical DSHOT outputs are forced to zero.
 
-See [HARDWARE.md](HARDWARE.md) for wiring information.
+See [HARDWARE.md](HARDWARE.md) for the complete pinout, plus the dedicated
+[SBUS receiver](docs/SBUS_RECEIVER.md) and
+[motors/ESC](docs/MOTORS_AND_ESC.md) wiring guides.

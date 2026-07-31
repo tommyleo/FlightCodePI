@@ -23,7 +23,8 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-set(PICO_BOARD pico2_w CACHE STRING "Board type")
+set(PICO_BOARD pico2 CACHE STRING "Board type")
+set_property(CACHE PICO_BOARD PROPERTY STRINGS pico2 pico2_w)
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -73,6 +74,12 @@ target_link_libraries(FlightCodePI
         hardware_spi
         hardware_watchdog
 )
+
+# Pico 2 W routes its onboard LED through the CYW43 device. The "none"
+# architecture initializes that device without enabling a Wi-Fi connection.
+if (PICO_CYW43_SUPPORTED)
+    target_link_libraries(FlightCodePI pico_cyw43_arch_none)
+endif()
 
 # Add the standard include files to the build
 target_include_directories(FlightCodePI PRIVATE
