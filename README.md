@@ -40,6 +40,22 @@ internal `Run Project` task. It first compiles the project and then loads it
 through `picotool`. The board must be connected by USB; the first installation
 may require holding BOOTSEL while connecting it.
 
+## Project structure
+
+```text
+src/
+├── app/                 Firmware entry point and main flight loop
+├── control/             Rate controller, PID logic and mixer configuration
+├── drivers/
+│   ├── imu/             IMU abstraction and MPU6050/MPU6500 drivers
+│   ├── motors/          DSHOT ESC output driver
+│   └── receiver/        SBUS receiver and frame decoder
+├── protocol/            Shared FlightCode Configurator protocol
+└── storage/             Persistent settings and flight log
+pio/                     PIO programs for SBUS and DSHOT
+docs/                    Dedicated hardware wiring guides
+```
+
 ## Persistent storage
 
 The last flash sector stores all settings. The preceding 25 sectors are

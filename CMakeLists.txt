@@ -37,24 +37,24 @@ pico_sdk_init()
 # Add executable. Default name is the project name, version 0.1
 
 add_executable(FlightCodePI
-        config_protocol.c
-        FlightCodePI.c
-        esc_controller.c
-        flight_log.c
-        flight_settings.c
-        imu.c
-        mpu6050.c
-        mpu6500.c
-        rate_controller.c
-        sbus_receiver.c
+        src/app/main.c
+        src/control/rate_controller.c
+        src/drivers/imu/imu.c
+        src/drivers/imu/mpu6050.c
+        src/drivers/imu/mpu6500.c
+        src/drivers/motors/esc_controller.c
+        src/drivers/receiver/sbus_receiver.c
+        src/protocol/config_protocol.c
+        src/storage/flight_log.c
+        src/storage/flight_settings.c
 )
 
 pico_generate_pio_header(FlightCodePI
-        ${CMAKE_CURRENT_LIST_DIR}/sbus_rx.pio
+        ${CMAKE_CURRENT_LIST_DIR}/pio/sbus_rx.pio
 )
 
 pico_generate_pio_header(FlightCodePI
-        ${CMAKE_CURRENT_LIST_DIR}/dshot.pio
+        ${CMAKE_CURRENT_LIST_DIR}/pio/dshot.pio
 )
 
 pico_set_program_name(FlightCodePI "FlightCodePI")
@@ -83,7 +83,13 @@ endif()
 
 # Add the standard include files to the build
 target_include_directories(FlightCodePI PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/src/app
+        ${CMAKE_CURRENT_LIST_DIR}/src/control
+        ${CMAKE_CURRENT_LIST_DIR}/src/drivers/imu
+        ${CMAKE_CURRENT_LIST_DIR}/src/drivers/motors
+        ${CMAKE_CURRENT_LIST_DIR}/src/drivers/receiver
+        ${CMAKE_CURRENT_LIST_DIR}/src/protocol
+        ${CMAKE_CURRENT_LIST_DIR}/src/storage
 )
 
 # Add any user requested libraries
