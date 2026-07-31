@@ -1,42 +1,42 @@
 # FlightCodePI
 
-Flight controller Quad X rate mode per Raspberry Pi Pico 2 W, compatibile con
-il configuratore unico `C:\SvilST\FlightCodeConfigurator`.
+Quad X rate-mode flight controller for Raspberry Pi Pico 2 W, compatible with
+the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 
-## Funzioni
+## Features
 
-- loop di controllo e acquisizione gyro a 8 kHz;
-- MPU6500, MPU9250 o MPU9255 su SPI0;
-- ricevente SBUS a 16 canali;
-- DSHOT150, DSHOT300 e DSHOT600;
-- PID roll, pitch e yaw con anti-windup e D-term filtrato;
-- rate individuali, expo, feedforward e TPA;
-- mixer Quad X con idle configurabile e direzione yaw normale/invertita;
-- allineamento software della flight controller sui tre assi;
-- calibrazione gyro automatica e manuale;
-- test motori con timeout e blocco tramite canale ARM;
-- simulazione PID con uscite motori fisiche sempre soppresse;
-- telemetria estesa e diagnostica ricevente;
-- log di volo a 200 Hz, 4096 campioni, persistente in flash;
-- riavvio USB BOOTSEL dal configuratore.
+- 8 kHz control loop and gyroscope sampling;
+- MPU6500, MPU9250, or MPU9255 on SPI0;
+- 16-channel SBUS receiver;
+- DSHOT150, DSHOT300, and DSHOT600;
+- roll, pitch, and yaw PID control with anti-windup and filtered D-term;
+- independent rates, expo, feedforward, and TPA;
+- Quad X mixer with configurable idle and normal/reversed yaw direction;
+- three-axis flight-controller alignment in software;
+- automatic and manual gyroscope calibration;
+- motor test with timeout and ARM-channel interlock;
+- PID simulation with physical motor outputs always suppressed;
+- extended telemetry and receiver diagnostics;
+- persistent 200 Hz flight log with 4,096 samples;
+- USB BOOTSEL restart from the configurator.
 
-## Memoria persistente
+## Persistent storage
 
-L'ultimo settore flash contiene tutte le impostazioni. I 25 settori precedenti
-sono riservati all'ultimo log di volo. Le aree sono separate e non si
-sovrappongono al firmware.
+The last flash sector stores all settings. The preceding 25 sectors are
+reserved for the latest flight log. These areas are separate and do not
+overlap the firmware.
 
-## Sicurezza di armamento
+## Arming safety
 
-Il firmware richiede:
+The firmware requires:
 
-1. IMU valida e calibrazione completata;
-2. segnale SBUS valido;
-3. canale ARM passato prima nello stato basso;
-4. throttle non superiore al 5% al momento dell'armamento;
-5. configuratore scollegato, salvo la simulazione PID protetta.
+1. a valid IMU and completed calibration;
+2. a valid SBUS signal;
+3. the ARM channel to have entered the low state first;
+4. throttle at or below 5% when arming;
+5. the configurator to be disconnected, except during protected PID simulation.
 
-Durante la simulazione PID i calcoli restano attivi ma i quattro segnali DSHOT
-fisici vengono forzati a zero.
+During PID simulation, control calculations remain active while all four
+physical DSHOT outputs are forced to zero.
 
-I collegamenti sono descritti in [HARDWARE.md](HARDWARE.md).
+See [HARDWARE.md](HARDWARE.md) for wiring information.

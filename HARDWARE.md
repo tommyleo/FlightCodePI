@@ -1,11 +1,11 @@
-# FlightCodePI - collegamenti hardware
+# FlightCodePI hardware connections
 
-Orientamento di riferimento: Raspberry Pi Pico 2 W visto dall'alto, con la
-porta USB verso l'alto.
+Reference orientation: Raspberry Pi Pico 2 W viewed from above, with the USB
+connector at the top.
 
 ## MPU6500 / MPU9250 / MPU9255 (SPI0)
 
-| Modulo IMU | Pico 2 W | Pin fisico |
+| IMU module | Pico 2 W | Physical pin |
 |---|---|---:|
 | VCC | 3V3(OUT) | 36 |
 | GND | GND | 23 |
@@ -13,14 +13,15 @@ porta USB verso l'alto.
 | SDA | GP19 / SPI0 TX (MOSI) | 25 |
 | AD0 | GP16 / SPI0 RX (MISO) | 21 |
 | NCS | GP17 / chip select | 22 |
-| INT | non collegato | - |
-| EDA | non collegato | - |
-| ECL | non collegato | - |
-| FSYNC | non collegato | - |
+| INT | Not connected | - |
+| EDA | Not connected | - |
+| ECL | Not connected | - |
+| FSYNC | Not connected | - |
 
-Alimentare il modulo esclusivamente da 3V3(OUT), non da VBUS. Tenere i cavi
-SPI corti, idealmente sotto 10 cm, e far correre GND vicino ai segnali.
+Power the module from 3V3(OUT) only, not from VBUS. Keep the SPI wires short,
+ideally below 10 cm, and route a ground wire close to the signal wires.
 
-Montare la IMU piatta e rigida, lontano dai cavi dei motori. Come prima
-orientazione, puntare la freccia X serigrafata verso il muso del quad e
-verificare nel Configurator il verso dei tre assi prima di collegare le eliche.
+Mount the IMU flat and firmly, away from motor wiring. As an initial
+orientation, point the printed X-axis arrow toward the front of the quad and
+verify the direction of all three axes in the Configurator before fitting the
+propellers.
