@@ -7,6 +7,13 @@
 #include "flight_settings.h"
 
 #define CALIBRATION_MAX_VARIATION_DPS 3.0f
+#define CALIBRATION_MAX_ABSOLUTE_RATE_DPS 10.0f
+#define CALIBRATION_MAX_CONSECUTIVE_OUTLIERS 16u
+#define GYRO_BIAS_TRACK_MAX_RATE_DPS 5.0f
+#define GYRO_BIAS_TRACK_MIN_ACCEL_G 0.75f
+#define GYRO_BIAS_TRACK_MAX_ACCEL_G 1.25f
+#define GYRO_BIAS_TRACK_SETTLE_S 1.0f
+#define GYRO_BIAS_TRACK_TIME_CONSTANT_S 2.0f
 #define GYRO_LPF_HZ 150.0f
 #define DTERM_LPF_HZ 100.0f
 
@@ -35,7 +42,9 @@ static float calibration_reference_x;
 static float calibration_reference_y;
 static float calibration_reference_z;
 static uint16_t calibration_samples;
+static uint16_t calibration_outliers;
 static uint32_t previous_sample_time_us;
+static float stationary_time_s;
 static bool calibrated;
 static bool mixer_saturated;
 
@@ -110,9 +119,42 @@ void rate_controller_start_calibration(void)
     calibration_reference_x =
         calibration_reference_y = calibration_reference_z = 0.0f;
     calibration_samples = 0u;
+    calibration_outliers = 0u;
     previous_sample_time_us = 0u;
+    stationary_time_s = 0.0f;
     calibrated = false;
     rate_controller_reset();
+}
+
+static void track_stationary_gyro_bias(const imu_sample_t *imu, float dt)
+{
+    const float corrected_x = imu->gyro_x_dps - gyro_bias_x;
+    const float corrected_y = imu->gyro_y_dps - gyro_bias_y;
+    const float corrected_z = imu->gyro_z_dps - gyro_bias_z;
+    const float accel_norm = sqrtf(imu->accel_x_g * imu->accel_x_g +
+                                   imu->accel_y_g * imu->accel_y_g +
+                                   imu->accel_z_g * imu->accel_z_g);
+    const bool stationary =
+        fabsf(corrected_x) < GYRO_BIAS_TRACK_MAX_RATE_DPS &&
+        fabsf(corrected_y) < GYRO_BIAS_TRACK_MAX_RATE_DPS &&
+        fabsf(corrected_z) < GYRO_BIAS_TRACK_MAX_RATE_DPS &&
+        accel_norm > GYRO_BIAS_TRACK_MIN_ACCEL_G &&
+        accel_norm < GYRO_BIAS_TRACK_MAX_ACCEL_G;
+
+    if (!stationary) {
+        stationary_time_s = 0.0f;
+        return;
+    }
+
+    stationary_time_s += dt;
+    if (stationary_time_s < GYRO_BIAS_TRACK_SETTLE_S) {
+        return;
+    }
+
+    const float alpha = dt / (GYRO_BIAS_TRACK_TIME_CONSTANT_S + dt);
+    gyro_bias_x += alpha * (imu->gyro_x_dps - gyro_bias_x);
+    gyro_bias_y += alpha * (imu->gyro_y_dps - gyro_bias_y);
+    gyro_bias_z += alpha * (imu->gyro_z_dps - gyro_bias_z);
 }
 
 void rate_controller_init(void)
@@ -126,17 +168,28 @@ static void update_calibration(const imu_sample_t *imu)
         calibration_reference_x = imu->gyro_x_dps;
         calibration_reference_y = imu->gyro_y_dps;
         calibration_reference_z = imu->gyro_z_dps;
-    } else if (fabsf(imu->gyro_x_dps - calibration_reference_x) >=
+    } else if (fabsf(imu->gyro_x_dps) >=
+                   CALIBRATION_MAX_ABSOLUTE_RATE_DPS ||
+               fabsf(imu->gyro_y_dps) >=
+                   CALIBRATION_MAX_ABSOLUTE_RATE_DPS ||
+               fabsf(imu->gyro_z_dps) >=
+                   CALIBRATION_MAX_ABSOLUTE_RATE_DPS ||
+               fabsf(imu->gyro_x_dps - calibration_reference_x) >=
                    CALIBRATION_MAX_VARIATION_DPS ||
                fabsf(imu->gyro_y_dps - calibration_reference_y) >=
                    CALIBRATION_MAX_VARIATION_DPS ||
                fabsf(imu->gyro_z_dps - calibration_reference_z) >=
                    CALIBRATION_MAX_VARIATION_DPS) {
+        if (++calibration_outliers < CALIBRATION_MAX_CONSECUTIVE_OUTLIERS) {
+            return;
+        }
         calibration_sum_x = calibration_sum_y = calibration_sum_z = 0.0f;
         calibration_samples = 0u;
+        calibration_outliers = 0u;
         return;
     }
 
+    calibration_outliers = 0u;
     calibration_sum_x += imu->gyro_x_dps;
     calibration_sum_y += imu->gyro_y_dps;
     calibration_sum_z += imu->gyro_z_dps;
@@ -182,6 +235,11 @@ bool rate_controller_update(const imu_sample_t *imu,
     }
 
     const flight_settings_t *settings = flight_settings_get();
+    if (!armed) {
+        track_stationary_gyro_bias(imu, dt);
+    } else {
+        stationary_time_s = 0.0f;
+    }
     output->roll_rate_dps =
         pt1(&gyro_filter[0], imu->gyro_x_dps - gyro_bias_x,
             GYRO_LPF_HZ, dt) * GYRO_ROLL_SIGN;

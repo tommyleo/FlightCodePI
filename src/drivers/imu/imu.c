@@ -16,6 +16,25 @@ static imu_sample_t latest_sample;
 static bool imu_available;
 static uint32_t next_sample_us;
 
+static void apply_sensor_mounting(float *x, float *y, float *z)
+{
+    /*
+     * The MPU module is mounted with its X/Y axes exchanged and its Z axis
+     * reversed relative to the flight-controller frame:
+     *
+     *     FC X (roll)  = sensor Y
+     *     FC Y (pitch) = sensor X
+     *     FC Z (yaw)   = -sensor Z
+     *
+     * Keep this fixed mounting transform separate from the user-configurable
+     * board alignment, whose zero setting must describe the standard build.
+     */
+    const float sensor_x = *x;
+    *x = *y;
+    *y = sensor_x;
+    *z = -*z;
+}
+
 static void rotate_vector(float *x, float *y, float *z)
 {
     const flight_settings_t *settings = flight_settings_get();
@@ -40,6 +59,12 @@ static void rotate_vector(float *x, float *y, float *z)
 
 static void apply_board_alignment(imu_sample_t *sample)
 {
+    apply_sensor_mounting(&sample->accel_x_g,
+                          &sample->accel_y_g,
+                          &sample->accel_z_g);
+    apply_sensor_mounting(&sample->gyro_x_dps,
+                          &sample->gyro_y_dps,
+                          &sample->gyro_z_dps);
     rotate_vector(&sample->accel_x_g,
                   &sample->accel_y_g,
                   &sample->accel_z_g);

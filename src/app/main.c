@@ -155,7 +155,18 @@ static void flight_control_step(const sbus_frame_t *receiver,
         stop_flight(FLIGHT_LOG_FLAG_STOP_IMU, escs);
         return;
     }
+    /*
+     * Gyro calibration is independent of the receiver.  Keep feeding fresh
+     * IMU samples while disarmed so bench calibration also works when no RX
+     * is connected or its signal is currently invalid.
+     */
+    if (!rate_controller_is_calibrated()) {
+        rate_controller_update(imu, false, 0u, 0, 0, 0, &rate_output);
+        stop_all_escs(escs);
+        return;
+    }
     if (!receiver->signal_valid) {
+        rate_controller_update(imu, false, 0u, 0, 0, 0, &rate_output);
         uint8_t reason = FLIGHT_LOG_FLAG_STOP_RX_LOSS;
         reason |= receiver->failsafe
             ? FLIGHT_LOG_FLAG_STOP_RX_FAILSAFE

@@ -523,8 +523,12 @@ void config_protocol_send_telemetry(const sbus_frame_t *receiver,
     for (uint8_t i = 0u; i < 4u; ++i) {
         printf(" %.2f", control->motor_percent[i]);
     }
-    printf(" %u %lu %.3f\n",
+    printf(" %u %lu %.3f %.3f %.3f %u %.2f\n",
            rate_controller_is_calibrated() ? 1u : 0u,
            (unsigned long)max_loop_period_us,
-           imu->gyro_y_dps);
+           imu->gyro_x_dps,
+           imu->gyro_y_dps,
+           imu->gyro_z_dps,
+           rate_controller_get_calibration_samples(),
+           imu->temperature_c);
 }
