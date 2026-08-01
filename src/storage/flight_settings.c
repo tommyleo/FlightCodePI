@@ -10,8 +10,9 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 4u
+#define SETTINGS_VERSION 5u
 #define SETTINGS_LEGACY_VERSION 3u
+#define SETTINGS_LEGACY_VERSION_4 4u
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 
 typedef struct {
@@ -27,6 +28,34 @@ typedef struct {
     legacy_settings_v3_t settings;
     uint32_t checksum;
 } legacy_record_v3_t;
+
+typedef struct {
+    pid_axis_t roll;
+    pid_axis_t pitch;
+    pid_axis_t yaw;
+    uint32_t dshot_rate_kbps;
+    float board_roll_deg;
+    float board_pitch_deg;
+    float board_yaw_deg;
+    uint32_t motor_direction_reversed;
+    float motor_idle_percent;
+    float roll_rate_dps;
+    float pitch_rate_dps;
+    float yaw_rate_dps;
+    float rate_expo;
+    float roll_feedforward;
+    float pitch_feedforward;
+    float yaw_feedforward;
+    float tpa_attenuation;
+    float tpa_breakpoint_percent;
+} legacy_settings_v4_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v4_t settings;
+    uint32_t checksum;
+} legacy_record_v4_t;
 
 typedef struct {
     uint32_t magic;
@@ -86,7 +115,14 @@ static bool valid_settings(const flight_settings_t *settings)
            finite_range(settings->pitch_feedforward, 0.0f, 1.0f) &&
            finite_range(settings->yaw_feedforward, 0.0f, 1.0f) &&
            finite_range(settings->tpa_attenuation, 0.0f, 1.0f) &&
-           finite_range(settings->tpa_breakpoint_percent, 0.0f, 100.0f);
+           finite_range(settings->tpa_breakpoint_percent, 0.0f, 100.0f) &&
+           settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
+           settings->arm_channel >= 4u && settings->arm_channel < 16u &&
+           settings->beep_channel >= 4u && settings->beep_channel < 16u &&
+           settings->arm_min_us >= 900u && settings->arm_max_us <= 2100u &&
+           settings->arm_min_us < settings->arm_max_us &&
+           settings->beep_min_us >= 900u && settings->beep_max_us <= 2100u &&
+           settings->beep_min_us < settings->beep_max_us;
 }
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
@@ -110,6 +146,13 @@ void flight_settings_reset_defaults(void)
     current_settings = (flight_settings_t){
         .dshot_rate_kbps = 300u,
         .motor_idle_percent = 3.0f,
+        .receiver_channel_order = RECEIVER_ORDER_TAER1234,
+        .arm_channel = 5u,
+        .arm_min_us = 1950u,
+        .arm_max_us = 2100u,
+        .beep_channel = 4u,
+        .beep_min_us = 1950u,
+        .beep_max_us = 2100u,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -127,6 +170,19 @@ void flight_settings_init(void)
         valid_settings(&stored->settings)) {
         current_settings = stored->settings;
         settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v4_t *legacy_v4 =
+        (const legacy_record_v4_t *)flash;
+    if (legacy_v4->magic == SETTINGS_MAGIC &&
+        legacy_v4->version == SETTINGS_LEGACY_VERSION_4 &&
+        legacy_v4->checksum ==
+            hash_record(legacy_v4, offsetof(legacy_record_v4_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, &legacy_v4->settings,
+               sizeof(legacy_v4->settings));
+        settings_saved = false;
         return;
     }
 

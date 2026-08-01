@@ -29,7 +29,17 @@ typedef struct {
     float yaw_feedforward;
     float tpa_attenuation;
     float tpa_breakpoint_percent;
+    uint32_t receiver_channel_order;
+    uint32_t arm_channel;
+    uint32_t arm_min_us;
+    uint32_t arm_max_us;
+    uint32_t beep_channel;
+    uint32_t beep_min_us;
+    uint32_t beep_max_us;
 } flight_settings_t;
+
+#define RECEIVER_ORDER_TAER1234 0u
+#define RECEIVER_ORDER_AETR1234 1u
 
 void flight_settings_init(void);
 const flight_settings_t *flight_settings_get(void);

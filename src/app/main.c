@@ -23,14 +23,6 @@
 #define ESC_COUNT 4u
 #define FLIGHT_LOOP_HZ 8000u
 #define FLIGHT_LOOP_PERIOD_US (1000000u / FLIGHT_LOOP_HZ)
-#define THROTTLE_CHANNEL_INDEX 0u  // CH1 della ricevente
-#define ROLL_CHANNEL_INDEX 1u      // CH2 della ricevente
-#define PITCH_CHANNEL_INDEX 2u     // CH3 della ricevente
-#define YAW_CHANNEL_INDEX 3u       // CH4 della ricevente
-#define BUZZER_CHANNEL_INDEX 4u    // CH5 della ricevente
-#define ARM_CHANNEL_INDEX 5u       // CH6 della ricevente
-#define ARM_THRESHOLD_US 2000u
-#define BUZZER_THRESHOLD_US 2000u
 #define THROTTLE_MIN_US 1000u
 #define THROTTLE_MAX_US 2000u
 #define ARM_THROTTLE_MAX_PERCENT 5u
@@ -47,6 +39,27 @@ static rate_controller_output_t rate_output;
 static bool arm_switch_was_low;
 static bool status_led_available;
 static bool status_led_on;
+
+static bool receiver_mode_active(const sbus_frame_t *receiver,
+                                 uint32_t channel,
+                                 uint32_t min_us,
+                                 uint32_t max_us)
+{
+    return receiver->signal_valid && channel < SBUS_CHANNEL_COUNT &&
+           receiver->channel_us[channel] >= min_us &&
+           receiver->channel_us[channel] <= max_us;
+}
+
+static void get_primary_channels(uint8_t *throttle, uint8_t *roll,
+                                 uint8_t *pitch, uint8_t *yaw)
+{
+    const bool aetr = flight_settings_get()->receiver_channel_order ==
+                      RECEIVER_ORDER_AETR1234;
+    *throttle = aetr ? 2u : 0u;
+    *roll = aetr ? 0u : 1u;
+    *pitch = aetr ? 1u : 2u;
+    *yaw = 3u;
+}
 
 static void status_led_init(void)
 {
@@ -78,9 +91,10 @@ static void status_led_toggle(void)
 
 static void update_buzzer(const sbus_frame_t *receiver)
 {
-    const bool buzzer_active =
-        receiver->signal_valid &&
-        receiver->channel_us[BUZZER_CHANNEL_INDEX] > BUZZER_THRESHOLD_US;
+    const flight_settings_t *settings = flight_settings_get();
+    const bool buzzer_active = receiver_mode_active(
+        receiver, settings->beep_channel,
+        settings->beep_min_us, settings->beep_max_us);
     gpio_put(BUZZER_GPIO, buzzer_active);
 }
 
@@ -175,14 +189,14 @@ static void flight_control_step(const sbus_frame_t *receiver,
         return;
     }
 
-    yaw_percent =
-        stick_us_to_percent(receiver->channel_us[YAW_CHANNEL_INDEX]);
-    roll_percent =
-        stick_us_to_percent(receiver->channel_us[ROLL_CHANNEL_INDEX]);
-    pitch_percent =
-        stick_us_to_percent(receiver->channel_us[PITCH_CHANNEL_INDEX]);
+    uint8_t throttle_channel, roll_channel, pitch_channel, yaw_channel;
+    get_primary_channels(&throttle_channel, &roll_channel,
+                         &pitch_channel, &yaw_channel);
+    yaw_percent = stick_us_to_percent(receiver->channel_us[yaw_channel]);
+    roll_percent = stick_us_to_percent(receiver->channel_us[roll_channel]);
+    pitch_percent = stick_us_to_percent(receiver->channel_us[pitch_channel]);
 
-    const uint16_t throttle_us = receiver->channel_us[THROTTLE_CHANNEL_INDEX];
+    const uint16_t throttle_us = receiver->channel_us[throttle_channel];
     uint8_t throttle_percent = 0u;
 
     if (throttle_us >= THROTTLE_MAX_US) {
@@ -194,8 +208,10 @@ static void flight_control_step(const sbus_frame_t *receiver,
     }
 
     escs_throttle_percent = throttle_percent;
-    const bool arm_switch =
-        receiver->channel_us[ARM_CHANNEL_INDEX] > ARM_THRESHOLD_US;
+    const flight_settings_t *settings = flight_settings_get();
+    const bool arm_switch = receiver_mode_active(
+        receiver, settings->arm_channel,
+        settings->arm_min_us, settings->arm_max_us);
     if (!arm_switch) {
         arm_switch_was_low = true;
         if (escs_armed) {
