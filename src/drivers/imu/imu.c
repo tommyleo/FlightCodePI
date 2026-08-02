@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "flight_settings.h"
+#include "flight_control_config.h"
 #include "hardware/i2c.h"
 #include "hardware/spi.h"
 #include "imu_config.h"
@@ -38,7 +39,7 @@ static void apply_sensor_mounting(float *x, float *y, float *z)
 static void rotate_vector(float *x, float *y, float *z)
 {
     const flight_settings_t *settings = flight_settings_get();
-    const float to_rad = 3.14159265358979323846f / 180.0f;
+    const float to_rad = FLIGHT_PI_F / 180.0f;
     const float cr = cosf(settings->board_roll_deg * to_rad);
     const float sr = sinf(settings->board_roll_deg * to_rad);
     const float cp = cosf(settings->board_pitch_deg * to_rad);

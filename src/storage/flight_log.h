@@ -20,11 +20,18 @@ typedef struct __attribute__((packed)) {
     uint8_t throttle;
     uint8_t flags;
     uint16_t loop_us;
-    uint8_t reserved;
+    uint16_t battery_centivolts;
+    uint16_t cell_centivolts;
+    uint8_t battery_cells;
+    int8_t p_term[3];
+    int8_t i_term[3];
+    int8_t d_term[3];
+    uint8_t reserved[3];
 } flight_log_record_t;
 
 void flight_log_init(void);
 void flight_log_set_inhibited(bool inhibited);
+void flight_log_set_battery_voltage(float voltage);
 void flight_log_start(void);
 void flight_log_stop(uint8_t stop_flag);
 bool flight_log_is_recording(void);
@@ -33,7 +40,8 @@ bool flight_log_get(uint32_t index, flight_log_record_t *record);
 void flight_log_persist_if_ready(void);
 void flight_log_record(const float gyro[3],
                        const float setpoint[3],
-                       const float pid[3],
+                       const float pid[3], const float p_term[3],
+                       const float i_term[3], const float d_term[3],
                        const float motors[4],
                        float throttle_percent,
                        bool mixer_saturated,

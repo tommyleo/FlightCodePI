@@ -12,12 +12,13 @@
 #define CONTROL_LOOP_HZ 8000u
 #define LOG_DECIMATION (CONTROL_LOOP_HZ / FLIGHT_LOG_RATE_HZ)
 #define LOG_FLASH_MAGIC 0x50494c47u
-#define LOG_FLASH_VERSION 1u
+#define LOG_FLASH_VERSION 3u
 #define LOG_FLASH_SECTORS 25u
 #define LOG_FLASH_SIZE (LOG_FLASH_SECTORS * FLASH_SECTOR_SIZE)
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 #define LOG_FLASH_OFFSET (SETTINGS_FLASH_OFFSET - LOG_FLASH_SIZE)
 #define LOG_PERSIST_DELAY_US 200000u
+#define LOG_MIN_FLIGHT_THROTTLE_PERCENT 30.0f
 
 typedef struct {
     uint32_t magic;
@@ -37,6 +38,11 @@ static bool inhibited;
 static bool using_flash;
 static bool persist_pending;
 static uint32_t persist_requested_us;
+static bool flight_qualified;
+static uint32_t preserved_flash_count;
+static uint16_t battery_centivolts;
+static uint16_t cell_centivolts;
+static uint8_t battery_cells;
 
 static uint32_t hash_bytes(uint32_t hash, const void *data, size_t length)
 {
@@ -90,6 +96,11 @@ void flight_log_init(void)
     inhibited = false;
     using_flash = false;
     persist_pending = false;
+    flight_qualified = false;
+    preserved_flash_count = 0u;
+    battery_centivolts = 0u;
+    cell_centivolts = 0u;
+    battery_cells = 0u;
 
     const log_header_t *header = flash_header();
     const size_t stored_size =
@@ -116,19 +127,46 @@ void flight_log_set_inhibited(bool value)
     if (value) recording = false;
 }
 
+void flight_log_set_battery_voltage(float voltage)
+{
+    if (voltage < 1.0f || voltage >= 100.0f) {
+        battery_centivolts = 0u;
+        cell_centivolts = 0u;
+        battery_cells = 0u;
+        return;
+    }
+    uint8_t candidate_cells = (uint8_t)ceilf(voltage / 4.25f);
+    if (candidate_cells > 8u) candidate_cells = 8u;
+    if (candidate_cells > battery_cells) battery_cells = candidate_cells;
+    battery_centivolts = (uint16_t)lroundf(voltage * 100.0f);
+    cell_centivolts = battery_cells > 0u
+        ? (uint16_t)lroundf(voltage * 100.0f / (float)battery_cells)
+        : 0u;
+}
+
 void flight_log_start(void)
 {
     if (inhibited) return;
+    preserved_flash_count = using_flash ? record_count : 0u;
     using_flash = false;
     persist_pending = false;
     write_index = 0u;
     record_count = 0u;
     decimation_count = 0u;
+    flight_qualified = false;
     recording = true;
 }
 
 void flight_log_stop(uint8_t stop_flag)
 {
+    if (recording && !flight_qualified) {
+        recording = false;
+        persist_pending = false;
+        write_index = 0u;
+        record_count = preserved_flash_count;
+        using_flash = preserved_flash_count > 0u;
+        return;
+    }
     if (recording && record_count > 0u) {
         flight_log_record_t *marker = &records[write_index];
         *marker = *ram_record(record_count - 1u);
@@ -215,13 +253,17 @@ void flight_log_persist_if_ready(void)
 
 void flight_log_record(const float gyro[3],
                        const float setpoint[3],
-                       const float pid[3],
+                       const float pid[3], const float p_term[3],
+                       const float i_term[3], const float d_term[3],
                        const float motors[4],
                        float throttle_percent,
                        bool saturated,
                        uint16_t loop_us)
 {
     if (!recording || inhibited) return;
+    if (throttle_percent > LOG_MIN_FLIGHT_THROTTLE_PERCENT) {
+        flight_qualified = true;
+    }
     if (++decimation_count < LOG_DECIMATION) return;
     decimation_count = 0u;
 
@@ -230,6 +272,9 @@ void flight_log_record(const float gyro[3],
         item->gyro[i] = scaled_i16(gyro[i], 10.0f);
         item->setpoint[i] = scaled_i16(setpoint[i], 10.0f);
         item->pid[i] = scaled_pid(pid[i]);
+        item->p_term[i] = scaled_pid(p_term[i]);
+        item->i_term[i] = scaled_pid(i_term[i]);
+        item->d_term[i] = scaled_pid(d_term[i]);
     }
     for (uint8_t i = 0u; i < 4u; ++i) {
         const float percent =
@@ -242,7 +287,10 @@ void flight_log_record(const float gyro[3],
     item->throttle = (uint8_t)lroundf(throttle_percent * 2.0f);
     item->flags = saturated ? FLIGHT_LOG_FLAG_MIXER_SATURATED : 0u;
     item->loop_us = loop_us;
-    item->reserved = 0u;
+    item->battery_centivolts = battery_centivolts;
+    item->cell_centivolts = cell_centivolts;
+    item->battery_cells = battery_cells;
+    memset(item->reserved, 0, sizeof(item->reserved));
 
     write_index = (write_index + 1u) % FLIGHT_LOG_CAPACITY;
     if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;

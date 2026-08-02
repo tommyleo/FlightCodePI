@@ -14,6 +14,7 @@
 #define SBUS_FLAG_FAILSAFE         0x08u
 #define SBUS_SIGNAL_TIMEOUT_US   100000u
 #define SBUS_BYTE_GAP_US            500u
+#define SBUS_FAILSAFE_CONFIRM_US  100000u
 
 static PIO sbus_pio = pio0;
 static unsigned int sbus_sm;
@@ -24,6 +25,8 @@ static uint32_t latest_frame_us;
 static uint32_t previous_byte_us;
 static bool have_frame;
 static sbus_diagnostics_t diagnostics;
+static bool failsafe_pending;
+static uint32_t failsafe_started_us;
 
 static uint16_t sbus_raw_to_us(uint16_t raw)
 {
@@ -33,6 +36,28 @@ static uint16_t sbus_raw_to_us(uint16_t raw)
 
 static void decode_frame(void)
 {
+    const uint32_t now_us = time_us_32();
+    const uint8_t flags = rx_buffer[23];
+    const bool frame_failsafe =
+        (flags & SBUS_FLAG_FAILSAFE) != 0u;
+    latest_frame.frame_lost =
+        (flags & SBUS_FLAG_FRAME_LOST) != 0u;
+    latest_frame_us = now_us;
+    have_frame = true;
+
+    if (frame_failsafe) {
+        if (!failsafe_pending) {
+            failsafe_pending = true;
+            failsafe_started_us = now_us;
+        }
+        latest_frame.failsafe =
+            (uint32_t)(now_us - failsafe_started_us) >=
+            SBUS_FAILSAFE_CONFIRM_US;
+        return;
+    }
+
+    failsafe_pending = false;
+    latest_frame.failsafe = false;
     const uint8_t *data = &rx_buffer[1];
     uint32_t accumulator = 0u;
     uint8_t accumulator_bits = 0u;
@@ -51,11 +76,6 @@ static void decode_frame(void)
         accumulator_bits -= 11u;
     }
 
-    const uint8_t flags = rx_buffer[23];
-    latest_frame.frame_lost = (flags & SBUS_FLAG_FRAME_LOST) != 0u;
-    latest_frame.failsafe = (flags & SBUS_FLAG_FAILSAFE) != 0u;
-    latest_frame_us = time_us_32();
-    have_frame = true;
 }
 
 static void accept_byte(uint8_t byte)
@@ -111,6 +131,8 @@ void sbus_receiver_init(unsigned int gpio)
     latest_frame_us = 0u;
     previous_byte_us = 0u;
     have_frame = false;
+    failsafe_pending = false;
+    failsafe_started_us = 0u;
 
     gpio_init(gpio);
     gpio_set_dir(gpio, GPIO_IN);

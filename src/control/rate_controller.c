@@ -16,11 +16,15 @@
 #define GYRO_BIAS_TRACK_TIME_CONSTANT_S 2.0f
 #define GYRO_LPF_HZ 150.0f
 #define DTERM_LPF_HZ 100.0f
+#define YAW_ITERM_RELAX_LPF_HZ 8.0f
+#define YAW_ITERM_RELAX_THRESHOLD_DPS 20.0f
+#define AIRMODE_ACTIVATION_THROTTLE_PERCENT 10.0f
 
 typedef struct {
     float integral;
     float previous_rate;
     float dterm;
+    float relaxed_setpoint;
 } pid_state_t;
 
 typedef struct {
@@ -47,6 +51,7 @@ static uint32_t previous_sample_time_us;
 static float stationary_time_s;
 static bool calibrated;
 static bool mixer_saturated;
+static bool airmode_active;
 
 static float clamp_float(float value, float minimum, float maximum)
 {
@@ -60,7 +65,7 @@ static float pt1(pt1_filter_t *filter, float input, float cutoff_hz, float dt)
         filter->initialized = true;
         return input;
     }
-    const float rc = 1.0f / (2.0f * 3.14159265358979323846f * cutoff_hz);
+    const float rc = 1.0f / (2.0f * FLIGHT_PI_F * cutoff_hz);
     filter->value += (dt / (rc + dt)) * (input - filter->value);
     return filter->value;
 }
@@ -78,12 +83,31 @@ static float pid_update(pid_state_t *state,
                         float feedforward,
                         float dt,
                         float output_limit,
-                        float tpa_factor)
+                        float tpa_factor,
+                        bool relax_integral, float *p_out, float *i_out,
+                        float *d_out)
 {
     const float error = setpoint - measured_rate;
+    float integral_factor = 1.0f;
+    if (relax_integral) {
+        const float relax_rc =
+            1.0f / (2.0f * FLIGHT_PI_F *
+                    YAW_ITERM_RELAX_LPF_HZ);
+        state->relaxed_setpoint +=
+            (dt / (relax_rc + dt)) *
+            (setpoint - state->relaxed_setpoint);
+        const float setpoint_highpass =
+            fabsf(setpoint - state->relaxed_setpoint);
+        integral_factor = clamp_float(
+            1.0f - setpoint_highpass / YAW_ITERM_RELAX_THRESHOLD_DPS,
+            0.0f, 1.0f);
+    }
     if (!mixer_saturated || state->integral * error < 0.0f) {
+        /* Never slow down unwinding an I term that opposes the error. */
+        if (state->integral * error < 0.0f) integral_factor = 1.0f;
         state->integral = clamp_float(
-            state->integral + gains->ki * error * dt,
+            state->integral +
+                gains->ki * error * dt * integral_factor,
             -PID_INTEGRAL_LIMIT_PERCENT,
             PID_INTEGRAL_LIMIT_PERCENT);
     }
@@ -92,12 +116,13 @@ static float pid_update(pid_state_t *state,
         -(measured_rate - state->previous_rate) / dt;
     state->previous_rate = measured_rate;
     const float d_rc =
-        1.0f / (2.0f * 3.14159265358979323846f * DTERM_LPF_HZ);
+        1.0f / (2.0f * FLIGHT_PI_F * DTERM_LPF_HZ);
     state->dterm += (dt / (d_rc + dt)) * (derivative - state->dterm);
 
-    return clamp_float(gains->kp * tpa_factor * error +
-                           state->integral +
-                           gains->kd * tpa_factor * state->dterm +
+    *p_out = gains->kp * tpa_factor * error;
+    *i_out = state->integral;
+    *d_out = gains->kd * tpa_factor * state->dterm;
+    return clamp_float(*p_out + *i_out + *d_out +
                            feedforward * setpoint,
                        -output_limit,
                        output_limit);
@@ -110,6 +135,7 @@ void rate_controller_reset(void)
     memset(&yaw_pid, 0, sizeof(yaw_pid));
     memset(gyro_filter, 0, sizeof(gyro_filter));
     mixer_saturated = false;
+    airmode_active = false;
 }
 
 void rate_controller_start_calibration(void)
@@ -283,27 +309,43 @@ bool rate_controller_update(const imu_sample_t *imu,
         pid_update(&roll_pid, &settings->roll,
                    output->roll_setpoint_dps, output->roll_rate_dps,
                    settings->roll_feedforward, dt,
-                   PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor);
+                   PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
+                   false, &output->p_term_percent[0],
+                   &output->i_term_percent[0], &output->d_term_percent[0]);
     output->pitch_pid_percent =
         pid_update(&pitch_pid, &settings->pitch,
                    output->pitch_setpoint_dps, output->pitch_rate_dps,
                    settings->pitch_feedforward, dt,
-                   PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor);
+                   PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
+                   false, &output->p_term_percent[1],
+                   &output->i_term_percent[1], &output->d_term_percent[1]);
     output->yaw_pid_percent =
         pid_update(&yaw_pid, &settings->yaw,
                    output->yaw_setpoint_dps, output->yaw_rate_dps,
                    settings->yaw_feedforward, dt,
-                   PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor);
+                   PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor, true,
+                   &output->p_term_percent[2], &output->i_term_percent[2],
+                   &output->d_term_percent[2]);
 
     const float mixer_yaw =
         settings->motor_direction_reversed != 0u
             ? -output->yaw_pid_percent
             : output->yaw_pid_percent;
+    if (throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
+        airmode_active = true;
+    }
+    const float pid_authority = airmode_active ? 1.0f :
+        clamp_float(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT,
+                    0.0f, 1.0f);
     float correction[4] = {
-        -output->roll_pid_percent + output->pitch_pid_percent - mixer_yaw,
-        -output->roll_pid_percent - output->pitch_pid_percent + mixer_yaw,
-        output->roll_pid_percent + output->pitch_pid_percent + mixer_yaw,
-        output->roll_pid_percent - output->pitch_pid_percent - mixer_yaw,
+        (-output->roll_pid_percent + output->pitch_pid_percent - mixer_yaw) *
+            pid_authority,
+        (-output->roll_pid_percent - output->pitch_pid_percent + mixer_yaw) *
+            pid_authority,
+        (output->roll_pid_percent + output->pitch_pid_percent + mixer_yaw) *
+            pid_authority,
+        (output->roll_pid_percent - output->pitch_pid_percent - mixer_yaw) *
+            pid_authority,
     };
     float minimum = correction[0];
     float maximum = correction[0];

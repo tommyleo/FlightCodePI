@@ -280,7 +280,9 @@ static void flight_control_step(const sbus_frame_t *receiver,
         rate_output.pitch_pid_percent,
         rate_output.yaw_pid_percent,
     };
-    flight_log_record(gyro, setpoints, pid, rate_output.motor_percent,
+    flight_log_record(gyro, setpoints, pid, rate_output.p_term_percent,
+                      rate_output.i_term_percent,
+                      rate_output.d_term_percent, rate_output.motor_percent,
                       (float)throttle_percent,
                       rate_output.mixer_saturated,
                       loop_period_us);

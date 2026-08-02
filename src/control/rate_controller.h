@@ -17,6 +17,9 @@ typedef struct {
     float roll_pid_percent;
     float pitch_pid_percent;
     float yaw_pid_percent;
+    float p_term_percent[3];
+    float i_term_percent[3];
+    float d_term_percent[3];
     bool mixer_saturated;
 } rate_controller_output_t;
 
