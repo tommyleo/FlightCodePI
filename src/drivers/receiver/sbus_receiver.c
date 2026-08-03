@@ -40,6 +40,19 @@ static void decode_frame(void)
     const uint8_t flags = rx_buffer[23];
     const bool frame_failsafe =
         (flags & SBUS_FLAG_FAILSAFE) != 0u;
+
+    if (!have_frame) {
+        /*
+         * Begin operational diagnostics with the first complete SBUS frame.
+         * Bytes and serial errors observed while the receiver and PIO input
+         * are starting up are acquisition noise, not link-quality failures.
+         */
+        diagnostics.serial_words = SBUS_FRAME_SIZE;
+        diagnostics.parity_errors = 0u;
+        diagnostics.stop_errors = 0u;
+        diagnostics.start_bytes = 1u;
+    }
+
     latest_frame.frame_lost =
         (flags & SBUS_FLAG_FRAME_LOST) != 0u;
     latest_frame_us = now_us;
