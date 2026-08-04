@@ -16,11 +16,17 @@ typedef struct {
 
 bool esc_controller_set_dshot_rate(unsigned int rate_kbps);
 unsigned int esc_controller_get_dshot_rate(void);
+void esc_controller_preinit(const unsigned int gpios[], uint8_t count);
 void esc_controller_init(esc_controller_t *esc, unsigned int gpio);
+void esc_controller_startup_sequence(esc_controller_t escs[], uint8_t count);
 void esc_controller_stop(esc_controller_t *esc);
+void esc_controller_stop_all(esc_controller_t escs[], uint8_t count);
 void esc_controller_set_throttle(esc_controller_t *esc, uint16_t throttle);
 void esc_controller_set_throttle_percent(esc_controller_t *esc, uint8_t percent);
 void esc_controller_set_throttle_percent_float(esc_controller_t *esc, float percent);
+void esc_controller_set_throttle_percent_all(esc_controller_t escs[],
+                                               const float percent[],
+                                               uint8_t count);
 void esc_controller_set_throttle_us(esc_controller_t *esc, uint16_t throttle_us);
 uint16_t esc_controller_get_last_command(const esc_controller_t *esc);
 

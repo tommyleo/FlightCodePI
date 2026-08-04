@@ -39,6 +39,12 @@ static rate_controller_output_t rate_output;
 static bool arm_switch_was_low;
 static bool status_led_available;
 static bool status_led_on;
+static const unsigned int esc_gpios[ESC_COUNT] = {
+    ESC_1_GPIO,
+    ESC_2_GPIO,
+    ESC_3_GPIO,
+    ESC_4_GPIO,
+};
 
 static bool receiver_mode_active(const sbus_frame_t *receiver,
                                  uint32_t channel,
@@ -117,18 +123,14 @@ static int8_t stick_us_to_percent(uint16_t value_us)
 
 static void stop_all_escs(esc_controller_t escs[ESC_COUNT])
 {
-    for (uint8_t i = 0u; i < ESC_COUNT; ++i) {
-        esc_controller_stop(&escs[i]);
-    }
+    esc_controller_stop_all(escs, ESC_COUNT);
 }
 
 static void set_esc_outputs(esc_controller_t escs[ESC_COUNT],
                             const rate_controller_output_t *output)
 {
-    for (uint8_t i = 0u; i < ESC_COUNT; ++i) {
-        esc_controller_set_throttle_percent_float(&escs[i],
-                                                  output->motor_percent[i]);
-    }
+    esc_controller_set_throttle_percent_all(
+        escs, output->motor_percent, ESC_COUNT);
 }
 
 static bool apply_configurator_motor_test(const sbus_frame_t *receiver,
@@ -140,9 +142,10 @@ static bool apply_configurator_motor_test(const sbus_frame_t *receiver,
     }
     escs_armed = false;
     for (uint8_t i = 0u; i < ESC_COUNT; ++i) {
-        esc_controller_set_throttle_percent(&escs[i], test_percent[i]);
         rate_output.motor_percent[i] = (float)test_percent[i];
     }
+    esc_controller_set_throttle_percent_all(
+        escs, rate_output.motor_percent, ESC_COUNT);
     return true;
 }
 
@@ -296,11 +299,19 @@ static void flight_control_step(const sbus_frame_t *receiver,
 
 int main(void)
 {
+    esc_controller_preinit(esc_gpios, ESC_COUNT);
     stdio_init_all();
     status_led_init();
     flight_settings_init();
     esc_controller_set_dshot_rate(
         flight_settings_get()->dshot_rate_kbps);
+
+    esc_controller_t escs[ESC_COUNT];
+    for (uint8_t i = 0u; i < ESC_COUNT; ++i) {
+        esc_controller_init(&escs[i], esc_gpios[i]);
+    }
+    esc_controller_startup_sequence(escs, ESC_COUNT);
+
     config_protocol_init();
     sbus_receiver_init(SBUS_INPUT_GPIO);
     gpio_init(BUZZER_GPIO);
@@ -310,17 +321,6 @@ int main(void)
     rate_controller_init();
     flight_log_init();
     arm_switch_was_low = false;
-
-    static const unsigned int esc_gpios[ESC_COUNT] = {
-        ESC_1_GPIO,
-        ESC_2_GPIO,
-        ESC_3_GPIO,
-        ESC_4_GPIO,
-    };
-    esc_controller_t escs[ESC_COUNT];
-    for (uint8_t i = 0u; i < ESC_COUNT; ++i) {
-        esc_controller_init(&escs[i], esc_gpios[i]);
-    }
 
     sbus_frame_t receiver = {0};
     absolute_time_t next_loop =
