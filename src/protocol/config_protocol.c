@@ -106,6 +106,15 @@ static void send_tpa(void)
            flight_settings_are_saved() ? 1u : 0u);
 }
 
+static void send_filters(void)
+{
+    const flight_settings_t *settings = flight_settings_get();
+    printf("@CFG FILTERS %.1f %.1f %u\n",
+           settings->gyro_lpf_hz,
+           settings->dterm_lpf_hz,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
 static void send_receiver_config(void)
 {
     const flight_settings_t *settings = flight_settings_get();
@@ -131,6 +140,7 @@ static void send_all_settings(void)
     send_rates();
     send_feedforward();
     send_tpa();
+    send_filters();
     send_receiver_config();
 }
 
@@ -163,7 +173,7 @@ static void process_command(const char *command,
         printf("@CFG HELLO FlightCode 3 PICO2_W\n");
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-               "FEEDFORWARD TPA GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
                "TELEMETRY_EXT RECEIVER_CONFIG\n");
         printf("@CFG IMU %s %u\n",
                imu_get_name(),
@@ -214,6 +224,10 @@ static void process_command(const char *command,
     }
     if (strcmp(command, "GET_TPA") == 0) {
         send_tpa();
+        return;
+    }
+    if (strcmp(command, "GET_FILTERS") == 0) {
+        send_filters();
         return;
     }
     if (strcmp(command, "GET_RECEIVER_CONFIG") == 0) {
@@ -373,6 +387,18 @@ static void process_command(const char *command,
         send_tpa();
         return;
     }
+    if (sscanf(command, "SET_FILTERS %f %f",
+               &settings.gyro_lpf_hz,
+               &settings.dterm_lpf_hz) == 2) {
+        const bool applied = flight_settings_set(&settings);
+        printf(applied ? "@CFG OK SET_FILTERS\n"
+                       : "@CFG ERROR INVALID_FILTERS\n");
+        if (applied) {
+            rate_controller_reset();
+        }
+        send_filters();
+        return;
+    }
     if (sscanf(command, "SET_FEEDFORWARD %f %f %f",
                &settings.roll_feedforward,
                &settings.pitch_feedforward,
@@ -460,6 +486,7 @@ static void process_command(const char *command,
         send_rates();
         send_feedforward();
         send_tpa();
+        send_filters();
         return;
     }
     if (sscanf(command, "SET_MOTOR_PROTOCOL %23s", name) == 1) {

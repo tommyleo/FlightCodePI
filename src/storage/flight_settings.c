@@ -10,7 +10,8 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 5u
+#define SETTINGS_VERSION 6u
+#define SETTINGS_LEGACY_VERSION_5 5u
 #define SETTINGS_LEGACY_VERSION 3u
 #define SETTINGS_LEGACY_VERSION_4 4u
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
@@ -56,6 +57,45 @@ typedef struct {
     legacy_settings_v4_t settings;
     uint32_t checksum;
 } legacy_record_v4_t;
+
+typedef struct {
+    pid_axis_t roll;
+    pid_axis_t pitch;
+    pid_axis_t yaw;
+    uint32_t dshot_rate_kbps;
+    float board_roll_deg;
+    float board_pitch_deg;
+    float board_yaw_deg;
+    uint32_t motor_direction_reversed;
+    float motor_idle_percent;
+    float roll_rate_dps;
+    float pitch_rate_dps;
+    float yaw_rate_dps;
+    float rate_expo;
+    float roll_feedforward;
+    float pitch_feedforward;
+    float yaw_feedforward;
+    float tpa_attenuation;
+    float tpa_breakpoint_percent;
+    uint32_t receiver_channel_order;
+    uint32_t arm_channel;
+    uint32_t arm_min_us;
+    uint32_t arm_max_us;
+    uint32_t beep_channel;
+    uint32_t beep_min_us;
+    uint32_t beep_max_us;
+} legacy_settings_v5_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v5_t settings;
+    uint32_t checksum;
+} legacy_record_v5_t;
+
+_Static_assert(offsetof(flight_settings_t, gyro_lpf_hz) ==
+                   sizeof(legacy_settings_v5_t),
+               "Flight settings v5 migration layout changed");
 
 typedef struct {
     uint32_t magic;
@@ -116,6 +156,9 @@ static bool valid_settings(const flight_settings_t *settings)
            finite_range(settings->yaw_feedforward, 0.0f, 1.0f) &&
            finite_range(settings->tpa_attenuation, 0.0f, 1.0f) &&
            finite_range(settings->tpa_breakpoint_percent, 0.0f, 100.0f) &&
+           finite_range(settings->gyro_lpf_hz, 50.0f, 250.0f) &&
+           finite_range(settings->dterm_lpf_hz, 20.0f, 200.0f) &&
+           settings->dterm_lpf_hz <= settings->gyro_lpf_hz &&
            settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
            settings->arm_channel >= 4u && settings->arm_channel < 16u &&
            settings->beep_channel >= 4u && settings->beep_channel < 16u &&
@@ -127,25 +170,27 @@ static bool valid_settings(const flight_settings_t *settings)
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 {
-    settings->roll = (pid_axis_t){0.090f, 0.200f, 0.0012f};
-    settings->pitch = (pid_axis_t){0.090f, 0.200f, 0.0012f};
-    settings->yaw = (pid_axis_t){0.120f, 0.200f, 0.0000f};
-    settings->roll_rate_dps = 500.0f;
-    settings->pitch_rate_dps = 500.0f;
-    settings->yaw_rate_dps = 400.0f;
-    settings->rate_expo = 0.35f;
+    settings->roll = (pid_axis_t){0.1005f, 0.200f, 0.0009f};
+    settings->pitch = (pid_axis_t){0.1005f, 0.200f, 0.0007f};
+    settings->yaw = (pid_axis_t){0.155f, 0.250f, 0.0000f};
+    settings->roll_rate_dps = 420.0f;
+    settings->pitch_rate_dps = 420.0f;
+    settings->yaw_rate_dps = 320.0f;
+    settings->rate_expo = 0.30f;
     settings->roll_feedforward = 0.025f;
     settings->pitch_feedforward = 0.025f;
     settings->yaw_feedforward = 0.015f;
-    settings->tpa_attenuation = 0.0f;
-    settings->tpa_breakpoint_percent = 65.0f;
+    settings->tpa_attenuation = 0.20f;
+    settings->tpa_breakpoint_percent = 70.0f;
+    settings->gyro_lpf_hz = 100.0f;
+    settings->dterm_lpf_hz = 60.0f;
 }
 
 void flight_settings_reset_defaults(void)
 {
     current_settings = (flight_settings_t){
         .dshot_rate_kbps = 300u,
-        .motor_idle_percent = 3.0f,
+        .motor_idle_percent = 5.0f,
         .receiver_channel_order = RECEIVER_ORDER_TAER1234,
         .arm_channel = 5u,
         .arm_min_us = 1950u,
@@ -170,6 +215,19 @@ void flight_settings_init(void)
         valid_settings(&stored->settings)) {
         current_settings = stored->settings;
         settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v5_t *legacy_v5 =
+        (const legacy_record_v5_t *)flash;
+    if (legacy_v5->magic == SETTINGS_MAGIC &&
+        legacy_v5->version == SETTINGS_LEGACY_VERSION_5 &&
+        legacy_v5->checksum ==
+            hash_record(legacy_v5, offsetof(legacy_record_v5_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, &legacy_v5->settings,
+               sizeof(legacy_v5->settings));
+        settings_saved = false;
         return;
     }
 

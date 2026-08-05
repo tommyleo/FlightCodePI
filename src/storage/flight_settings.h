@@ -36,6 +36,8 @@ typedef struct {
     uint32_t beep_channel;
     uint32_t beep_min_us;
     uint32_t beep_max_us;
+    float gyro_lpf_hz;
+    float dterm_lpf_hz;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u

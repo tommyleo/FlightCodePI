@@ -14,8 +14,6 @@
 #define GYRO_BIAS_TRACK_MAX_ACCEL_G 1.25f
 #define GYRO_BIAS_TRACK_SETTLE_S 1.0f
 #define GYRO_BIAS_TRACK_TIME_CONSTANT_S 2.0f
-#define GYRO_LPF_HZ 150.0f
-#define DTERM_LPF_HZ 100.0f
 #define YAW_ITERM_RELAX_LPF_HZ 8.0f
 #define YAW_ITERM_RELAX_THRESHOLD_DPS 20.0f
 #define AIRMODE_ACTIVATION_THROTTLE_PERCENT 10.0f
@@ -81,11 +79,12 @@ static float pid_update(pid_state_t *state,
                         float setpoint,
                         float measured_rate,
                         float feedforward,
-                        float dt,
-                        float output_limit,
-                        float tpa_factor,
-                        bool relax_integral, float *p_out, float *i_out,
-                        float *d_out)
+                         float dt,
+                         float output_limit,
+                         float tpa_factor,
+                         float dterm_lpf_hz, bool relax_integral,
+                         float *p_out, float *i_out,
+                         float *d_out)
 {
     const float error = setpoint - measured_rate;
     float integral_factor = 1.0f;
@@ -116,7 +115,7 @@ static float pid_update(pid_state_t *state,
         -(measured_rate - state->previous_rate) / dt;
     state->previous_rate = measured_rate;
     const float d_rc =
-        1.0f / (2.0f * FLIGHT_PI_F * DTERM_LPF_HZ);
+        1.0f / (2.0f * FLIGHT_PI_F * dterm_lpf_hz);
     state->dterm += (dt / (d_rc + dt)) * (derivative - state->dterm);
 
     *p_out = gains->kp * tpa_factor * error;
@@ -268,13 +267,13 @@ bool rate_controller_update(const imu_sample_t *imu,
     }
     output->roll_rate_dps =
         pt1(&gyro_filter[0], imu->gyro_x_dps - gyro_bias_x,
-            GYRO_LPF_HZ, dt) * GYRO_ROLL_SIGN;
+            settings->gyro_lpf_hz, dt) * GYRO_ROLL_SIGN;
     output->pitch_rate_dps =
         pt1(&gyro_filter[1], imu->gyro_y_dps - gyro_bias_y,
-            GYRO_LPF_HZ, dt) * GYRO_PITCH_SIGN;
+            settings->gyro_lpf_hz, dt) * GYRO_PITCH_SIGN;
     output->yaw_rate_dps =
         pt1(&gyro_filter[2], imu->gyro_z_dps - gyro_bias_z,
-            GYRO_LPF_HZ, dt) * GYRO_YAW_SIGN;
+            settings->gyro_lpf_hz, dt) * GYRO_YAW_SIGN;
     output->roll_setpoint_dps =
         rate_setpoint(roll_percent, settings->roll_rate_dps,
                       settings->rate_expo);
@@ -311,20 +310,23 @@ bool rate_controller_update(const imu_sample_t *imu,
                    output->roll_setpoint_dps, output->roll_rate_dps,
                    settings->roll_feedforward, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   false, &output->p_term_percent[0],
+                   settings->dterm_lpf_hz, false,
+                   &output->p_term_percent[0],
                    &output->i_term_percent[0], &output->d_term_percent[0]);
     output->pitch_pid_percent =
         pid_update(&pitch_pid, &settings->pitch,
                    output->pitch_setpoint_dps, output->pitch_rate_dps,
                    settings->pitch_feedforward, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   false, &output->p_term_percent[1],
+                   settings->dterm_lpf_hz, false,
+                   &output->p_term_percent[1],
                    &output->i_term_percent[1], &output->d_term_percent[1]);
     output->yaw_pid_percent =
         pid_update(&yaw_pid, &settings->yaw,
                    output->yaw_setpoint_dps, output->yaw_rate_dps,
                    settings->yaw_feedforward, dt,
-                   PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor, true,
+                   PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor,
+                   settings->dterm_lpf_hz, true,
                    &output->p_term_percent[2], &output->i_term_percent[2],
                    &output->d_term_percent[2]);
 
@@ -366,7 +368,9 @@ bool rate_controller_update(const imu_sample_t *imu,
     const float base = clamp_float(requested_base,
                                    settings->motor_idle_percent - minimum,
                                    100.0f - maximum);
-    mixer_saturated = scale < 0.999f || fabsf(base - requested_base) > 0.001f;
+    /* Airmode base shifting preserves the requested corrections. Freeze the
+     * integrators only when the correction span itself must be reduced. */
+    mixer_saturated = scale < 0.999f;
     output->mixer_saturated = mixer_saturated;
     for (uint8_t i = 0u; i < 4u; ++i) {
         output->motor_percent[i] =

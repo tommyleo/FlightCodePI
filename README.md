@@ -12,6 +12,8 @@ the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 - DSHOT150, DSHOT300, and DSHOT600;
 - roll, pitch, and yaw PID control with anti-windup and filtered D-term;
 - independent rates, expo, feedforward, and TPA;
+- persistent configurable gyroscope and D-term low-pass filters, defaulting to
+  100 Hz and 60 Hz;
 - Quad X mixer with configurable idle and normal/reversed yaw direction;
 - three-axis flight-controller alignment in software;
 - automatic and manual gyroscope calibration;
