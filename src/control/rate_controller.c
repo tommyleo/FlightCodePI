@@ -278,9 +278,10 @@ bool rate_controller_update(const imu_sample_t *imu,
     output->roll_setpoint_dps =
         rate_setpoint(roll_percent, settings->roll_rate_dps,
                       settings->rate_expo);
+    /* Receiver pitch high is nose-down; body pitch positive is nose-up. */
     output->pitch_setpoint_dps =
-        rate_setpoint(pitch_percent, settings->pitch_rate_dps,
-                      settings->rate_expo);
+        -rate_setpoint(pitch_percent, settings->pitch_rate_dps,
+                       settings->rate_expo);
     output->yaw_setpoint_dps =
         rate_setpoint(yaw_percent, settings->yaw_rate_dps,
                       settings->rate_expo);
@@ -337,14 +338,15 @@ bool rate_controller_update(const imu_sample_t *imu,
     const float pid_authority = airmode_active ? 1.0f :
         clamp_float(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT,
                     0.0f, 1.0f);
+    /* Quad X: M1 rear-right, M2 front-right, M3 rear-left, M4 front-left. */
     float correction[4] = {
-        (-output->roll_pid_percent + output->pitch_pid_percent - mixer_yaw) *
+        (-output->roll_pid_percent - output->pitch_pid_percent - mixer_yaw) *
             pid_authority,
-        (-output->roll_pid_percent - output->pitch_pid_percent + mixer_yaw) *
+        (-output->roll_pid_percent + output->pitch_pid_percent + mixer_yaw) *
             pid_authority,
-        (output->roll_pid_percent + output->pitch_pid_percent + mixer_yaw) *
+        (output->roll_pid_percent - output->pitch_pid_percent + mixer_yaw) *
             pid_authority,
-        (output->roll_pid_percent - output->pitch_pid_percent - mixer_yaw) *
+        (output->roll_pid_percent + output->pitch_pid_percent - mixer_yaw) *
             pid_authority,
     };
     float minimum = correction[0];

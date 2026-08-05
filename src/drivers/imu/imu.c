@@ -63,6 +63,10 @@ static void apply_board_alignment(imu_sample_t *sample)
     apply_sensor_mounting(&sample->accel_x_g,
                           &sample->accel_y_g,
                           &sample->accel_z_g);
+    /* MPU acceleration is specific force; expose the gravity vector. */
+    sample->accel_x_g = -sample->accel_x_g;
+    sample->accel_y_g = -sample->accel_y_g;
+    sample->accel_z_g = -sample->accel_z_g;
     apply_sensor_mounting(&sample->gyro_x_dps,
                           &sample->gyro_y_dps,
                           &sample->gyro_z_dps);

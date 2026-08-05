@@ -18,7 +18,7 @@ the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 - motor test with timeout and ARM-channel interlock;
 - PID simulation with physical motor outputs always suppressed;
 - extended telemetry and receiver diagnostics;
-- persistent 200 Hz flight log with 4,096 samples;
+- persistent 200 Hz flight log with 4,096 samples, retained above 10% throttle;
 - USB BOOTSEL restart from the configurator.
 - onboard status LED toggled every second as a firmware heartbeat.
 
