@@ -29,6 +29,12 @@
 #define STICK_CENTER_US 1500
 #define STICK_RANGE_US 500
 #define STICK_DEADBAND_US 10
+#define STATUS_LED_PATTERN_PERIOD_US 1000000u
+#define STATUS_LED_FLASH_US 80000u
+#define STATUS_LED_SECOND_FLASH_US 160000u
+#define BUZZER_PATTERN_PERIOD_US 500000u
+#define BUZZER_BEEP_US 70000u
+#define BUZZER_SECOND_BEEP_US 120000u
 
 static bool escs_armed = false;
 static uint8_t escs_throttle_percent = 0u;
@@ -71,9 +77,13 @@ static void status_led_init(void)
 {
 #if defined(CYW43_WL_GPIO_LED_PIN)
     status_led_available = cyw43_arch_init() == 0;
+    if (status_led_available) {
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, false);
+    }
 #elif defined(PICO_DEFAULT_LED_PIN)
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    gpio_put(PICO_DEFAULT_LED_PIN, false);
     status_led_available = true;
 #else
     status_led_available = false;
@@ -81,13 +91,13 @@ static void status_led_init(void)
     status_led_on = false;
 }
 
-static void status_led_toggle(void)
+static void status_led_set(bool enabled)
 {
-    if (!status_led_available) {
+    if (!status_led_available || status_led_on == enabled) {
         return;
     }
 
-    status_led_on = !status_led_on;
+    status_led_on = enabled;
 #if defined(CYW43_WL_GPIO_LED_PIN)
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, status_led_on);
 #elif defined(PICO_DEFAULT_LED_PIN)
@@ -95,13 +105,41 @@ static void status_led_toggle(void)
 #endif
 }
 
+static void status_led_update(bool receiver_signal_valid)
+{
+    const uint32_t phase =
+        time_us_32() % STATUS_LED_PATTERN_PERIOD_US;
+    const bool first_flash = phase < STATUS_LED_FLASH_US;
+    const bool second_flash = receiver_signal_valid &&
+        phase >= STATUS_LED_SECOND_FLASH_US &&
+        phase < STATUS_LED_SECOND_FLASH_US + STATUS_LED_FLASH_US;
+    status_led_set(first_flash || second_flash);
+}
+
 static void update_buzzer(const sbus_frame_t *receiver)
 {
+    static bool was_active;
+    static uint32_t started_us;
     const flight_settings_t *settings = flight_settings_get();
     const bool buzzer_active = receiver_mode_active(
         receiver, settings->beep_channel,
         settings->beep_min_us, settings->beep_max_us);
-    gpio_put(BUZZER_GPIO, buzzer_active);
+    if (!buzzer_active) {
+        was_active = false;
+        gpio_put(BUZZER_GPIO, false);
+        return;
+    }
+    const uint32_t now_us = time_us_32();
+    if (!was_active) {
+        was_active = true;
+        started_us = now_us;
+    }
+    const uint32_t phase =
+        (uint32_t)(now_us - started_us) % BUZZER_PATTERN_PERIOD_US;
+    const bool sounding = phase < BUZZER_BEEP_US ||
+        (phase >= BUZZER_SECOND_BEEP_US &&
+         phase < BUZZER_SECOND_BEEP_US + BUZZER_BEEP_US);
+    gpio_put(BUZZER_GPIO, sounding);
 }
 
 static int8_t stick_us_to_percent(uint16_t value_us)
@@ -326,7 +364,6 @@ int main(void)
     absolute_time_t next_loop =
         delayed_by_us(get_absolute_time(), FLIGHT_LOOP_PERIOD_US);
     absolute_time_t next_telemetry = delayed_by_ms(next_loop, 40u);
-    absolute_time_t next_status_led = delayed_by_ms(next_loop, 1000u);
     uint32_t loop_measurement_start_us = time_us_32();
     uint32_t loop_measurement_count = 0u;
     float loop_frequency_hz = (float)FLIGHT_LOOP_HZ;
@@ -355,6 +392,7 @@ int main(void)
         next_loop = delayed_by_us(next_loop, FLIGHT_LOOP_PERIOD_US);
 
         sbus_receiver_read(&receiver);
+        status_led_update(receiver.signal_valid);
         const bool simulation_was_enabled =
             config_protocol_pid_simulation_enabled();
         config_protocol_update(&receiver, escs_armed);
@@ -387,11 +425,6 @@ int main(void)
                                            &rate_output);
             next_telemetry = delayed_by_ms(next_telemetry, 40u);
             maximum_loop_period_us = 0u;
-        }
-
-        if (time_reached(next_status_led)) {
-            status_led_toggle();
-            next_status_led = delayed_by_ms(next_status_led, 1000u);
         }
 
         if (time_reached(next_loop)) {

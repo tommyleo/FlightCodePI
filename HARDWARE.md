@@ -50,7 +50,9 @@ propellers.
 
 ## Buzzer
 
-GP7, physical pin 10, becomes high when receiver channel 5 is above 2000 us.
+GP7, physical pin 10, produces two short active-high pulses every 500 ms when
+receiver channel 5 is above 2000 us. The active buzzer determines the pitch;
+the firmware controls its double-beep envelope.
 Use a 3.3 V active buzzer only if its current is within the GPIO limit. For a
 5 V or higher-current buzzer, drive it through a transistor or MOSFET with a
 flyback diode when required. Always connect the driver ground to Pico GND.

@@ -22,7 +22,9 @@ the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 - extended telemetry and receiver diagnostics;
 - persistent 200 Hz flight log with 4,096 samples, retained above 10% throttle;
 - USB BOOTSEL restart from the configurator.
-- onboard status LED toggled every second as a firmware heartbeat.
+- onboard status LED flashes once per second as a firmware heartbeat and twice
+  per second when a valid SBUS signal is present;
+- configured buzzer mode produces two short beeps every 500 ms.
 
 ## Supported boards
 
