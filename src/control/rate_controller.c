@@ -82,7 +82,8 @@ static float pid_update(pid_state_t *state,
                          float dt,
                          float output_limit,
                          float tpa_factor,
-                         float dterm_lpf_hz, bool relax_integral,
+                         float dterm_lpf_hz, bool integral_enabled,
+                         bool relax_integral,
                          float *p_out, float *i_out,
                          float *d_out)
 {
@@ -101,7 +102,10 @@ static float pid_update(pid_state_t *state,
             1.0f - setpoint_highpass / YAW_ITERM_RELAX_THRESHOLD_DPS,
             0.0f, 1.0f);
     }
-    if (!mixer_saturated || state->integral * error < 0.0f) {
+    if (!integral_enabled) {
+        /* Do not store corrections while armed on the ground. */
+        state->integral = 0.0f;
+    } else if (!mixer_saturated || state->integral * error < 0.0f) {
         /* Never slow down unwinding an I term that opposes the error. */
         if (state->integral * error < 0.0f) integral_factor = 1.0f;
         state->integral = clamp_float(
@@ -305,12 +309,24 @@ bool rate_controller_update(const imu_sample_t *imu,
             (100.0f - settings->tpa_breakpoint_percent);
     }
 
+    /*
+     * Airmode is latched for the rest of the armed session. Before its first
+     * activation the craft may be handled or the sticks moved while the
+     * motors have little authority, so the I term must remain empty.
+     * Activate before evaluating the PID loops so the first airborne
+     * correction always starts from a known zero integral.
+     */
+    if (!airmode_active &&
+        throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
+        airmode_active = true;
+    }
+
     output->roll_pid_percent =
         pid_update(&roll_pid, &settings->roll,
                    output->roll_setpoint_dps, output->roll_rate_dps,
                    settings->roll_feedforward, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   settings->dterm_lpf_hz, false,
+                   settings->dterm_lpf_hz, airmode_active, false,
                    &output->p_term_percent[0],
                    &output->i_term_percent[0], &output->d_term_percent[0]);
     output->pitch_pid_percent =
@@ -318,7 +334,7 @@ bool rate_controller_update(const imu_sample_t *imu,
                    output->pitch_setpoint_dps, output->pitch_rate_dps,
                    settings->pitch_feedforward, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   settings->dterm_lpf_hz, false,
+                   settings->dterm_lpf_hz, airmode_active, false,
                    &output->p_term_percent[1],
                    &output->i_term_percent[1], &output->d_term_percent[1]);
     output->yaw_pid_percent =
@@ -326,7 +342,7 @@ bool rate_controller_update(const imu_sample_t *imu,
                    output->yaw_setpoint_dps, output->yaw_rate_dps,
                    settings->yaw_feedforward, dt,
                    PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   settings->dterm_lpf_hz, true,
+                   settings->dterm_lpf_hz, airmode_active, true,
                    &output->p_term_percent[2], &output->i_term_percent[2],
                    &output->d_term_percent[2]);
 
@@ -334,9 +350,6 @@ bool rate_controller_update(const imu_sample_t *imu,
         settings->motor_direction_reversed != 0u
             ? -output->yaw_pid_percent
             : output->yaw_pid_percent;
-    if (throttle >= AIRMODE_ACTIVATION_THROTTLE_PERCENT) {
-        airmode_active = true;
-    }
     const float pid_authority = airmode_active ? 1.0f :
         clamp_float(throttle / AIRMODE_ACTIVATION_THROTTLE_PERCENT,
                     0.0f, 1.0f);
@@ -359,17 +372,38 @@ bool rate_controller_update(const imu_sample_t *imu,
     }
 
     const float available = 100.0f - settings->motor_idle_percent;
-    const float span = maximum - minimum;
-    const float scale = span > available ? available / span : 1.0f;
-    minimum *= scale;
-    maximum *= scale;
     const float requested_base =
         settings->motor_idle_percent + throttle * available / 100.0f;
-    const float base = clamp_float(requested_base,
-                                   settings->motor_idle_percent - minimum,
-                                   100.0f - maximum);
-    /* Airmode base shifting preserves the requested corrections. Freeze the
-     * integrators only when the correction span itself must be reduced. */
+    float scale = 1.0f;
+    float base = requested_base;
+    if (airmode_active) {
+        const float span = maximum - minimum;
+        if (span > available) scale = available / span;
+        minimum *= scale;
+        maximum *= scale;
+        base = clamp_float(requested_base,
+                           settings->motor_idle_percent - minimum,
+                           100.0f - maximum);
+    } else {
+        /*
+         * Before takeoff the throttle command owns the collective output.
+         * Keep its base fixed and reduce all axis corrections by the same
+         * factor so none of them can pull a motor below idle or raise the
+         * collective through airmode-style base shifting.
+         */
+        if (minimum < 0.0f) {
+            scale = fminf(scale,
+                          (requested_base - settings->motor_idle_percent) /
+                              -minimum);
+        }
+        if (maximum > 0.0f) {
+            scale = fminf(scale,
+                          (100.0f - requested_base) / maximum);
+        }
+        scale = clamp_float(scale, 0.0f, 1.0f);
+    }
+    /* Scaled corrections have exhausted the authority available in the
+     * current mixer mode and should stop I-term accumulation. */
     mixer_saturated = scale < 0.999f;
     output->mixer_saturated = mixer_saturated;
     for (uint8_t i = 0u; i < 4u; ++i) {
