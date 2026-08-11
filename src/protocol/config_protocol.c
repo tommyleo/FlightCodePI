@@ -118,7 +118,7 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *settings = flight_settings_get();
-    printf("@CFG RECEIVER_CONFIG %s %lu %lu %lu %lu %lu %lu %u\n",
+    printf("@CFG RECEIVER_CONFIG SBUS %s %lu %lu %lu %lu %lu %lu %u\n",
            settings->receiver_channel_order == RECEIVER_ORDER_AETR1234
                ? "AETR1234" : "TAER1234",
            (unsigned long)(settings->arm_channel + 1u),
@@ -175,6 +175,7 @@ static void process_command(const char *command,
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
                "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
                "TELEMETRY_EXT RECEIVER_CONFIG\n");
+        printf("@CFG RECEIVER_PROTOCOLS SBUS\n");
         printf("@CFG IMU %s %u\n",
                imu_get_name(),
                imu_is_available() ? 1u : 0u);
@@ -343,12 +344,24 @@ static void process_command(const char *command,
     }
 
     flight_settings_t settings = *flight_settings_get();
-    char receiver_order[16];
+    char receiver_protocol[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
-    if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
-               receiver_order, &arm_channel, &arm_min, &arm_max,
-               &beep_channel, &beep_min, &beep_max) == 7) {
+    bool receiver_config_match = false;
+    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %15s %u %u %u %u %u %u",
+               receiver_protocol, receiver_order, &arm_channel, &arm_min,
+               &arm_max, &beep_channel, &beep_min, &beep_max) == 8) {
+        if (strcmp(receiver_protocol, "SBUS") != 0) {
+            printf("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+            return;
+        }
+        receiver_config_match = true;
+    } else if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
+                      receiver_order, &arm_channel, &arm_min, &arm_max,
+                      &beep_channel, &beep_min, &beep_max) == 7) {
+        receiver_config_match = true;
+    }
+    if (receiver_config_match) {
         if (strcmp(receiver_order, "TAER1234") == 0) {
             settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
         } else if (strcmp(receiver_order, "AETR1234") == 0) {
