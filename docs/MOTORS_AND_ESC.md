@@ -1,7 +1,7 @@
 # Motors and ESC wiring
 
-FlightCodePI controls four ESCs with unidirectional DSHOT. DSHOT150, DSHOT300
-and DSHOT600 are selectable from the Configurator; DSHOT300 is the default.
+FlightCodePI controls four ESCs with unidirectional DSHOT. DSHOT300, DSHOT600
+and DSHOT1200 are selectable from the Configurator; DSHOT300 is the default.
 Bidirectional DSHOT telemetry is not currently used.
 
 ## Signal connections and motor order

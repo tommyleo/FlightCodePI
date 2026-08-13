@@ -8,6 +8,7 @@
 #define MPU6500_REG_ACCEL_CONFIG 0x1cu
 #define MPU6500_REG_ACCEL_CONFIG_2 0x1du
 #define MPU6500_REG_ACCEL_XOUT_H 0x3bu
+#define MPU6500_REG_GYRO_XOUT_H 0x43u
 #define MPU6500_REG_USER_CTRL 0x6au
 #define MPU6500_REG_PWR_MGMT_1 0x6bu
 #define MPU6500_REG_PWR_MGMT_2 0x6cu
@@ -149,6 +150,40 @@ bool mpu6500_read(mpu6500_t *device, imu_sample_t *sample)
         (float)read_be_i16(&data[10]) / MPU6500_GYRO_SCALE_2000DPS;
     sample->gyro_z_dps =
         (float)read_be_i16(&data[12]) / MPU6500_GYRO_SCALE_2000DPS;
+    sample->sample_time_us = time_us_32();
+    sample->valid = true;
+    return true;
+}
+
+bool mpu6500_set_gyro_only(mpu6500_t *device, bool enabled)
+{
+    if (!device->initialized) {
+        return false;
+    }
+    /* FCHOICE_B=01 selects the 32 kHz gyro path; standby all accel axes. */
+    if (!write_register(device, MPU6500_REG_GYRO_CONFIG,
+                        enabled ? 0x19u : 0x18u)) {
+        return false;
+    }
+    return write_register(device, MPU6500_REG_PWR_MGMT_2,
+                          enabled ? 0x38u : 0x00u);
+}
+
+bool mpu6500_read_gyro(mpu6500_t *device, imu_sample_t *sample)
+{
+    uint8_t data[6];
+    if (!device->initialized ||
+        !read_registers(device, MPU6500_REG_GYRO_XOUT_H,
+                        data, sizeof(data))) {
+        sample->valid = false;
+        return false;
+    }
+    sample->gyro_x_dps =
+        (float)read_be_i16(&data[0]) / MPU6500_GYRO_SCALE_2000DPS;
+    sample->gyro_y_dps =
+        (float)read_be_i16(&data[2]) / MPU6500_GYRO_SCALE_2000DPS;
+    sample->gyro_z_dps =
+        (float)read_be_i16(&data[4]) / MPU6500_GYRO_SCALE_2000DPS;
     sample->sample_time_us = time_us_32();
     sample->valid = true;
     return true;

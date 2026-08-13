@@ -11,11 +11,9 @@
 #include "mpu6500.h"
 #include "pico/stdlib.h"
 
-#define IMU_SAMPLE_PERIOD_US 125u
-
 static imu_sample_t latest_sample;
 static bool imu_available;
-static uint32_t next_sample_us;
+static bool gyro_only_active;
 
 static void apply_sensor_mounting(float *x, float *y, float *z)
 {
@@ -78,6 +76,16 @@ static void apply_board_alignment(imu_sample_t *sample)
                   &sample->gyro_z_dps);
 }
 
+static void apply_gyro_alignment(imu_sample_t *sample)
+{
+    apply_sensor_mounting(&sample->gyro_x_dps,
+                          &sample->gyro_y_dps,
+                          &sample->gyro_z_dps);
+    rotate_vector(&sample->gyro_x_dps,
+                  &sample->gyro_y_dps,
+                  &sample->gyro_z_dps);
+}
+
 #if IMU_BACKEND == IMU_BACKEND_MPU6050_I2C
 static mpu6050_t imu_device;
 #elif IMU_BACKEND == IMU_BACKEND_MPU6500_SPI
@@ -110,29 +118,37 @@ bool imu_init(void)
                                 IMU_SPI_BAUD_HZ);
 #endif
 
-    next_sample_us = time_us_32();
+    gyro_only_active = false;
     return imu_available;
 }
 
-bool imu_update(void)
+bool imu_update(bool gyro_only)
 {
     if (!imu_available) {
         return false;
     }
 
-    const uint32_t now = time_us_32();
-    if ((int32_t)(now - next_sample_us) < 0) {
-        return false;
-    }
-    next_sample_us += IMU_SAMPLE_PERIOD_US;
-
 #if IMU_BACKEND == IMU_BACKEND_MPU6050_I2C
+    (void)gyro_only;
     const bool updated = mpu6050_read(&imu_device, &latest_sample);
 #elif IMU_BACKEND == IMU_BACKEND_MPU6500_SPI
-    const bool updated = mpu6500_read(&imu_device, &latest_sample);
+    if (gyro_only != gyro_only_active) {
+        if (!mpu6500_set_gyro_only(&imu_device, gyro_only)) {
+            latest_sample.valid = false;
+            return false;
+        }
+        gyro_only_active = gyro_only;
+    }
+    const bool updated = gyro_only
+        ? mpu6500_read_gyro(&imu_device, &latest_sample)
+        : mpu6500_read(&imu_device, &latest_sample);
 #endif
     if (updated) {
-        apply_board_alignment(&latest_sample);
+        if (gyro_only) {
+            apply_gyro_alignment(&latest_sample);
+        } else {
+            apply_board_alignment(&latest_sample);
+        }
     }
     return updated;
 }

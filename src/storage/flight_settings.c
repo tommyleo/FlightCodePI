@@ -10,11 +10,19 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 6u
+#define SETTINGS_VERSION 7u
+#define SETTINGS_LEGACY_VERSION_6 6u
 #define SETTINGS_LEGACY_VERSION_5 5u
 #define SETTINGS_LEGACY_VERSION 3u
 #define SETTINGS_LEGACY_VERSION_4 4u
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, main_loop_hz)];
+    uint32_t checksum;
+} legacy_record_v6_t;
 
 typedef struct {
     pid_axis_t roll;
@@ -135,9 +143,9 @@ static bool valid_settings(const flight_settings_t *settings)
         return false;
     }
     const bool valid_dshot =
-        settings->dshot_rate_kbps == 150u ||
         settings->dshot_rate_kbps == 300u ||
-        settings->dshot_rate_kbps == 600u;
+        settings->dshot_rate_kbps == 600u ||
+        settings->dshot_rate_kbps == 1200u;
     return valid_pid(&settings->roll) &&
            valid_pid(&settings->pitch) &&
            valid_pid(&settings->yaw) &&
@@ -166,6 +174,7 @@ static bool valid_settings(const flight_settings_t *settings)
            settings->arm_min_us < settings->arm_max_us &&
            settings->beep_min_us >= 900u && settings->beep_max_us <= 2100u &&
            settings->beep_min_us < settings->beep_max_us;
+
 }
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
@@ -198,6 +207,7 @@ void flight_settings_reset_defaults(void)
         .beep_channel = 4u,
         .beep_min_us = 1950u,
         .beep_max_us = 2100u,
+        .main_loop_hz = 16000u,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -212,9 +222,30 @@ void flight_settings_init(void)
         stored->version == SETTINGS_VERSION &&
         stored->checksum ==
             hash_record(stored, offsetof(settings_record_t, checksum)) &&
-        valid_settings(&stored->settings)) {
+        valid_settings(&stored->settings) &&
+        (stored->settings.main_loop_hz == 8000u ||
+         stored->settings.main_loop_hz == 16000u ||
+         stored->settings.main_loop_hz == 32000u)) {
         current_settings = stored->settings;
         settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v6_t *legacy_v6 =
+        (const legacy_record_v6_t *)flash;
+    if (legacy_v6->magic == SETTINGS_MAGIC &&
+        legacy_v6->version == SETTINGS_LEGACY_VERSION_6 &&
+        legacy_v6->checksum == hash_record(
+            legacy_v6, offsetof(legacy_record_v6_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v6->settings,
+               sizeof(legacy_v6->settings));
+        if (current_settings.dshot_rate_kbps != 300u &&
+            current_settings.dshot_rate_kbps != 600u &&
+            current_settings.dshot_rate_kbps != 1200u) {
+            current_settings.dshot_rate_kbps = 300u;
+        }
+        settings_saved = false;
         return;
     }
 
@@ -268,7 +299,10 @@ const flight_settings_t *flight_settings_get(void)
 
 bool flight_settings_set(const flight_settings_t *settings)
 {
-    if (!valid_settings(settings)) {
+    if (!valid_settings(settings) ||
+        (settings->main_loop_hz != 8000u &&
+         settings->main_loop_hz != 16000u &&
+         settings->main_loop_hz != 32000u)) {
         return false;
     }
     current_settings = *settings;

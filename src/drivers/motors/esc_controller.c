@@ -51,7 +51,7 @@ static uint16_t dshot_sanitize_value(uint16_t value)
 
 bool esc_controller_set_dshot_rate(unsigned int rate_kbps)
 {
-    if (rate_kbps != 150u && rate_kbps != 300u && rate_kbps != 600u) {
+    if (rate_kbps != 300u && rate_kbps != 600u && rate_kbps != 1200u) {
         return false;
     }
 

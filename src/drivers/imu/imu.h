@@ -17,7 +17,7 @@ typedef struct {
 } imu_sample_t;
 
 bool imu_init(void);
-bool imu_update(void);
+bool imu_update(bool gyro_only);
 const imu_sample_t *imu_get_latest_sample(void);
 bool imu_is_available(void);
 const char *imu_get_name(void);

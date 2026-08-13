@@ -51,6 +51,13 @@ static void send_motor_protocol(void)
            flight_settings_are_saved() ? 1u : 0u);
 }
 
+static void send_main_loop(void)
+{
+    printf("@CFG MAIN_LOOP %lu %u\n",
+           (unsigned long)flight_settings_get()->main_loop_hz,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
 static void send_board_alignment(void)
 {
     const flight_settings_t *settings = flight_settings_get();
@@ -142,6 +149,7 @@ static void send_all_settings(void)
     send_tpa();
     send_filters();
     send_receiver_config();
+    send_main_loop();
 }
 
 static void send_flight_log_info(const sbus_frame_t *receiver)
@@ -171,7 +179,7 @@ static void process_command(const char *command,
         client_active = true;
         last_client_activity_us = time_us_32();
         printf("@CFG HELLO FlightCode 3 PICO2_W\n");
-        printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL "
+        printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
                "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
                "TELEMETRY_EXT RECEIVER_CONFIG\n");
@@ -201,6 +209,10 @@ static void process_command(const char *command,
     if (strcmp(command, "GET_MOTOR_PROTOCOL") == 0 ||
         strcmp(command, "GET_DSHOT") == 0) {
         send_motor_protocol();
+        return;
+    }
+    if (strcmp(command, "GET_MAIN_LOOP") == 0) {
+        send_main_loop();
         return;
     }
     if (strcmp(command, "GET_BOARD_ALIGNMENT") == 0) {
@@ -442,6 +454,20 @@ static void process_command(const char *command,
         return;
     }
 
+    unsigned int main_loop_hz;
+    if (sscanf(command, "SET_MAIN_LOOP %u", &main_loop_hz) == 1) {
+        settings = *flight_settings_get();
+        settings.main_loop_hz = main_loop_hz;
+        if (armed) {
+            printf("@CFG ERROR ARMED\n");
+        } else if (flight_settings_set(&settings)) {
+            printf("@CFG OK SET_MAIN_LOOP REBOOT_REQUIRED\n");
+            send_main_loop();
+        } else {
+            printf("@CFG ERROR INVALID_MAIN_LOOP\n");
+        }
+        return;
+    }
     char name[24];
     if (sscanf(command, "SET_MOTOR_DIRECTION %23s", name) == 1) {
         if (strcmp(name, "NORMAL") == 0) {
@@ -500,6 +526,7 @@ static void process_command(const char *command,
         send_feedforward();
         send_tpa();
         send_filters();
+        send_main_loop();
         return;
     }
     if (sscanf(command, "SET_MOTOR_PROTOCOL %23s", name) == 1) {
