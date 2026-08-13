@@ -224,8 +224,7 @@ void flight_settings_init(void)
             hash_record(stored, offsetof(settings_record_t, checksum)) &&
         valid_settings(&stored->settings) &&
         (stored->settings.main_loop_hz == 8000u ||
-         stored->settings.main_loop_hz == 16000u ||
-         stored->settings.main_loop_hz == 32000u)) {
+         stored->settings.main_loop_hz == 16000u)) {
         current_settings = stored->settings;
         settings_saved = true;
         return;
@@ -301,8 +300,7 @@ bool flight_settings_set(const flight_settings_t *settings)
 {
     if (!valid_settings(settings) ||
         (settings->main_loop_hz != 8000u &&
-         settings->main_loop_hz != 16000u &&
-         settings->main_loop_hz != 32000u)) {
+         settings->main_loop_hz != 16000u)) {
         return false;
     }
     current_settings = *settings;

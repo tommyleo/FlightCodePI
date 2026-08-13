@@ -6,8 +6,8 @@
 #include "esc_controller.h"
 #include "flight_log.h"
 #include "flight_settings.h"
-#include "hardware/watchdog.h"
 #include "pico/bootrom.h"
+#include "hardware/watchdog.h"
 #include "pico/stdlib.h"
 
 #define CONFIG_LINE_LENGTH 192u
@@ -25,6 +25,8 @@ static uint8_t motor_test_percent[4];
 static uint32_t last_motor_test_us;
 static bool dfu_pending;
 static uint32_t dfu_at_us;
+static bool reboot_pending;
+static uint32_t reboot_at_us;
 
 static bool arm_mode_active(const sbus_frame_t *receiver)
 {
@@ -181,7 +183,7 @@ static void process_command(const char *command,
         printf("@CFG HELLO FlightCode 3 PICO2_W\n");
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU "
+               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
                "TELEMETRY_EXT RECEIVER_CONFIG\n");
         printf("@CFG RECEIVER_PROTOCOLS SBUS\n");
         printf("@CFG IMU %s %u\n",
@@ -307,6 +309,16 @@ static void process_command(const char *command,
         dfu_pending = true;
         dfu_at_us = time_us_32() + DFU_DELAY_US;
         printf("@CFG OK ENTER_DFU\n");
+        return;
+    }
+    if (strcmp(command, "REBOOT") == 0) {
+        if (armed) {
+            printf("@CFG ERROR ARMED\n");
+            return;
+        }
+        reboot_pending = true;
+        reboot_at_us = time_us_32() + DFU_DELAY_US;
+        printf("@CFG OK REBOOT\n");
         return;
     }
 
@@ -566,6 +578,7 @@ void config_protocol_init(void)
     pid_simulation_enabled = false;
     memset(motor_test_percent, 0, sizeof(motor_test_percent));
     dfu_pending = false;
+    reboot_pending = false;
 }
 
 void config_protocol_update(const sbus_frame_t *receiver, bool armed)
@@ -589,6 +602,9 @@ void config_protocol_update(const sbus_frame_t *receiver, bool armed)
 
     if (dfu_pending && (int32_t)(time_us_32() - dfu_at_us) >= 0) {
         reset_usb_boot(0u, 0u);
+    }
+    if (reboot_pending && (int32_t)(time_us_32() - reboot_at_us) >= 0) {
+        watchdog_reboot(0u, 0u, 0u);
     }
     if (client_active &&
         time_us_32() - last_client_activity_us >
