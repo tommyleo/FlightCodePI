@@ -39,7 +39,7 @@ static bool arm_mode_active(const sbus_frame_t *receiver)
 static void send_pids(void)
 {
     const flight_settings_t *settings = flight_settings_get();
-    printf("@CFG PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %u\n",
+    printf("@CFG PIDS %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %u\n",
            settings->roll.kp, settings->roll.ki, settings->roll.kd,
            settings->pitch.kp, settings->pitch.ki, settings->pitch.kd,
            settings->yaw.kp, settings->yaw.ki, settings->yaw.kd,
