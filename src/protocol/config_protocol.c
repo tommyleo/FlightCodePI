@@ -253,6 +253,37 @@ static void process_command(const char *command,
         send_flight_log_info(receiver);
         return;
     }
+    if (strcmp(command, "GET_FLIGHT_LOG_METADATA") == 0) {
+        flight_log_metadata_t metadata;
+        if (!flight_log_get_metadata(&metadata)) {
+            printf("@CFG FLIGHT_LOG_METADATA_UNAVAILABLE\n");
+            return;
+        }
+        printf("@CFG FLIGHT_LOG_METADATA_CORE %lu %lu %lu %lu %lu %lu %lu %u %.2f\n",
+               (unsigned long)metadata.version,
+               (unsigned long)metadata.main_loop_hz,
+               (unsigned long)metadata.gyro_rate_hz,
+               (unsigned long)metadata.log_rate_hz,
+               (unsigned long)metadata.motor_protocol,
+               (unsigned long)metadata.motor_direction_reversed,
+               (unsigned long)metadata.receiver_protocol,
+               metadata.initial_battery_cells,
+               metadata.initial_battery_centivolts / 100.0f);
+        printf("@CFG FLIGHT_LOG_METADATA_PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
+               metadata.pids[0], metadata.pids[1], metadata.pids[2],
+               metadata.pids[3], metadata.pids[4], metadata.pids[5],
+               metadata.pids[6], metadata.pids[7], metadata.pids[8]);
+        printf("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+               metadata.rates[0], metadata.rates[1], metadata.rates[2],
+               metadata.rates[3], metadata.feedforward[0],
+               metadata.feedforward[1], metadata.feedforward[2],
+               metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
+               metadata.filters[1], metadata.alignment[0],
+               metadata.alignment[1], metadata.alignment[2],
+               metadata.motor_idle_percent);
+        printf("@CFG FLIGHT_LOG_METADATA_END\n");
+        return;
+    }
 
     unsigned int log_offset;
     unsigned int log_count;

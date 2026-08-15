@@ -7,12 +7,13 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "pico/stdlib.h"
+#include "flight_settings.h"
 
 #define FLIGHT_LOG_CAPACITY 4096u
 #define CONTROL_LOOP_HZ 16000u
 #define LOG_DECIMATION (CONTROL_LOOP_HZ / FLIGHT_LOG_RATE_HZ)
 #define LOG_FLASH_MAGIC 0x50494c47u
-#define LOG_FLASH_VERSION 3u
+#define LOG_FLASH_VERSION 4u
 #define LOG_FLASH_SECTORS 25u
 #define LOG_FLASH_SIZE (LOG_FLASH_SECTORS * FLASH_SECTOR_SIZE)
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
@@ -27,6 +28,7 @@ typedef struct {
     uint32_t rate_hz;
     uint32_t record_size;
     uint32_t checksum;
+    flight_log_metadata_t metadata;
 } log_header_t;
 
 static flight_log_record_t records[FLIGHT_LOG_CAPACITY];
@@ -43,6 +45,7 @@ static uint32_t preserved_flash_count;
 static uint16_t battery_centivolts;
 static uint16_t cell_centivolts;
 static uint8_t battery_cells;
+static flight_log_metadata_t flight_metadata;
 
 static uint32_t hash_bytes(uint32_t hash, const void *data, size_t length)
 {
@@ -154,6 +157,27 @@ void flight_log_start(void)
     record_count = 0u;
     decimation_count = 0u;
     flight_qualified = false;
+    const flight_settings_t *const s = flight_settings_get();
+    memset(&flight_metadata, 0, sizeof(flight_metadata));
+    flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
+    flight_metadata.main_loop_hz = s->main_loop_hz;
+    flight_metadata.gyro_rate_hz = s->main_loop_hz;
+    flight_metadata.log_rate_hz = FLIGHT_LOG_RATE_HZ;
+    const pid_axis_t gains[3] = {s->roll, s->pitch, s->yaw};
+    for (uint8_t i = 0u; i < 3u; ++i) {
+        flight_metadata.pids[i * 3u] = gains[i].kp;
+        flight_metadata.pids[i * 3u + 1u] = gains[i].ki;
+        flight_metadata.pids[i * 3u + 2u] = gains[i].kd;
+    }
+    flight_metadata.rates[0]=s->roll_rate_dps; flight_metadata.rates[1]=s->pitch_rate_dps;
+    flight_metadata.rates[2]=s->yaw_rate_dps; flight_metadata.rates[3]=s->rate_expo;
+    flight_metadata.feedforward[0]=s->roll_feedforward; flight_metadata.feedforward[1]=s->pitch_feedforward; flight_metadata.feedforward[2]=s->yaw_feedforward;
+    flight_metadata.tpa[0]=s->tpa_attenuation; flight_metadata.tpa[1]=s->tpa_breakpoint_percent;
+    flight_metadata.filters[0]=s->gyro_lpf_hz; flight_metadata.filters[1]=s->dterm_lpf_hz;
+    flight_metadata.alignment[0]=s->board_roll_deg; flight_metadata.alignment[1]=s->board_pitch_deg; flight_metadata.alignment[2]=s->board_yaw_deg;
+    flight_metadata.motor_idle_percent=s->motor_idle_percent; flight_metadata.motor_protocol=s->dshot_rate_kbps;
+    flight_metadata.motor_direction_reversed=s->motor_direction_reversed;
+    flight_metadata.initial_battery_centivolts=battery_centivolts; flight_metadata.initial_battery_cells=battery_cells;
     recording = true;
 }
 
@@ -193,6 +217,13 @@ bool flight_log_get(uint32_t index, flight_log_record_t *record)
     return true;
 }
 
+bool flight_log_get_metadata(flight_log_metadata_t *metadata)
+{
+    if (metadata == NULL) return false;
+    *metadata = using_flash ? flash_header()->metadata : flight_metadata;
+    return metadata->version == FLIGHT_LOG_METADATA_VERSION;
+}
+
 void flight_log_persist_if_ready(void)
 {
     if (!persist_pending || recording ||
@@ -207,6 +238,7 @@ void flight_log_persist_if_ready(void)
         .rate_hz = FLIGHT_LOG_RATE_HZ,
         .record_size = sizeof(flight_log_record_t),
         .checksum = 2166136261u,
+        .metadata = flight_metadata,
     };
     for (uint32_t i = 0u; i < record_count; ++i) {
         header.checksum =

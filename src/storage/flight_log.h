@@ -29,6 +29,16 @@ typedef struct __attribute__((packed)) {
     uint8_t reserved[3];
 } flight_log_record_t;
 
+#define FLIGHT_LOG_METADATA_VERSION 1u
+typedef struct __attribute__((packed)) {
+    uint32_t version, main_loop_hz, gyro_rate_hz, log_rate_hz;
+    float pids[9], rates[4], feedforward[3], tpa[2], filters[2], alignment[3];
+    float motor_idle_percent;
+    uint32_t motor_protocol, motor_direction_reversed, receiver_protocol;
+    uint16_t initial_battery_centivolts;
+    uint8_t initial_battery_cells, reserved;
+} flight_log_metadata_t;
+
 void flight_log_init(void);
 void flight_log_set_inhibited(bool inhibited);
 void flight_log_set_battery_voltage(float voltage);
@@ -37,6 +47,7 @@ void flight_log_stop(uint8_t stop_flag);
 bool flight_log_is_recording(void);
 uint32_t flight_log_count(void);
 bool flight_log_get(uint32_t index, flight_log_record_t *record);
+bool flight_log_get_metadata(flight_log_metadata_t *metadata);
 void flight_log_persist_if_ready(void);
 void flight_log_record(const float gyro[3],
                        const float setpoint[3],
