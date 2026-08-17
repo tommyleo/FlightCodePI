@@ -199,3 +199,7 @@ const char *mpu6500_get_name(const mpu6500_t *device)
     }
     return "MPU6500 SPI";
 }
+uint32_t mpu6500_get_gyro_rate_hz(bool gyro_only)
+{
+    return gyro_only ? 32000u : 8000u;
+}

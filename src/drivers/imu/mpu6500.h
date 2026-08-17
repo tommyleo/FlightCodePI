@@ -26,5 +26,6 @@ bool mpu6500_read(mpu6500_t *device, imu_sample_t *sample);
 bool mpu6500_set_gyro_only(mpu6500_t *device, bool enabled);
 bool mpu6500_read_gyro(mpu6500_t *device, imu_sample_t *sample);
 const char *mpu6500_get_name(const mpu6500_t *device);
+uint32_t mpu6500_get_gyro_rate_hz(bool gyro_only);
 
 #endif

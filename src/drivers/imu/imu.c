@@ -173,3 +173,18 @@ const char *imu_get_name(void)
     return "Unknown";
 #endif
 }
+
+uint32_t imu_get_update_rate_hz(bool gyro_only,
+                                uint32_t scheduler_rate_hz)
+{
+#if IMU_BACKEND == IMU_BACKEND_MPU6050_I2C
+    (void)gyro_only;
+    const uint32_t sensor_rate_hz = mpu6050_get_gyro_rate_hz();
+#elif IMU_BACKEND == IMU_BACKEND_MPU6500_SPI
+    const uint32_t sensor_rate_hz =
+        mpu6500_get_gyro_rate_hz(gyro_only);
+#endif
+    return sensor_rate_hz < scheduler_rate_hz
+        ? sensor_rate_hz
+        : scheduler_rate_hz;
+}

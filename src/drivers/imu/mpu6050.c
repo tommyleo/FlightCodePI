@@ -123,3 +123,7 @@ bool mpu6050_read(mpu6050_t *device, imu_sample_t *sample)
     sample->valid = true;
     return true;
 }
+uint32_t mpu6050_get_gyro_rate_hz(void)
+{
+    return 1000u;
+}

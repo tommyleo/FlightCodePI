@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "main.h"
+
 #include "pico/stdlib.h"
 #include "config_protocol.h"
 #include "esc_controller.h"
 #include "flight_log.h"
 #include "flight_settings.h"
 #include "imu.h"
-#include "imu_config.h"
 #include "rate_controller.h"
 #include "sbus_receiver.h"
 
@@ -21,7 +22,7 @@
 #define ESC_3_GPIO 3u
 #define ESC_4_GPIO 6u
 #define BUZZER_GPIO 7u
-#define ESC_COUNT 4u
+#define ESC_COUNT MAIN_ESC_COUNT
 #define THROTTLE_MIN_US 1000u
 #define THROTTLE_MAX_US 2000u
 #define ARM_THROTTLE_MAX_PERCENT 5u
@@ -50,8 +51,6 @@ static const unsigned int esc_gpios[ESC_COUNT] = {
     ESC_3_GPIO,
     ESC_4_GPIO,
 };
-
-typedef struct { uint32_t phase; uint32_t rate_hz; } loop_task_t;
 
 static bool task_due(loop_task_t *task, uint32_t loop_hz)
 {
@@ -345,6 +344,103 @@ static void flight_control_step(const sbus_frame_t *receiver,
     }
 }
 
+static void main_loop_state_init(main_loop_state_t *state)
+{
+    state->loop_hz = flight_settings_get()->main_loop_hz;
+    state->next_loop = get_absolute_time();
+    state->service_task = (loop_task_t){0u, 1000u};
+    state->telemetry_task = (loop_task_t){0u, 25u};
+    state->esc_task = (loop_task_t){
+        0u, state->loop_hz < 16000u ? state->loop_hz : 16000u};
+    state->imu_task = (loop_task_t){
+        0u, imu_get_update_rate_hz(false, state->loop_hz)};
+    state->loop_measurement_start_us = time_us_32();
+    state->loop_frequency_hz = (float)state->loop_hz;
+    state->previous_loop_start_us = time_us_32();
+}
+
+static void main_loop_step(main_loop_state_t *state)
+{
+    busy_wait_until(state->next_loop);
+    const bool service_due = task_due(&state->service_task, state->loop_hz);
+    const bool esc_update_due = task_due(&state->esc_task, state->loop_hz);
+    const uint32_t loop_start_us = time_us_32();
+    const uint32_t loop_period_us = loop_start_us - state->previous_loop_start_us;
+    state->previous_loop_start_us = loop_start_us;
+    if (loop_period_us > state->maximum_loop_period_us) {
+        state->maximum_loop_period_us = loop_period_us;
+    }
+    ++state->loop_measurement_count;
+    const uint32_t measurement_period_us =
+        loop_start_us - state->loop_measurement_start_us;
+    if (measurement_period_us >= 250000u) {
+        state->loop_frequency_hz =
+            ((float)state->loop_measurement_count * 1000000.0f) /
+            (float)measurement_period_us;
+        state->loop_measurement_start_us = loop_start_us;
+        state->loop_measurement_count = 0u;
+    }
+
+    uint32_t loop_delay_us = 1000000u / state->loop_hz;
+    state->timing_remainder += 1000000u % state->loop_hz;
+    if (state->timing_remainder >= state->loop_hz) {
+        state->timing_remainder -= state->loop_hz;
+        ++loop_delay_us;
+    }
+    state->next_loop = delayed_by_us(state->next_loop, loop_delay_us);
+
+    sbus_receiver_read(&state->receiver);
+    if (service_due) {
+        status_led_update(state->receiver.signal_valid);
+    }
+    if (service_due) {
+        const bool simulation_was_enabled =
+            config_protocol_pid_simulation_enabled();
+        config_protocol_update(&state->receiver, escs_armed);
+        if (simulation_was_enabled &&
+            !config_protocol_pid_simulation_enabled() && escs_armed) {
+            stop_flight(FLIGHT_LOG_FLAG_STOP_DISARM, state->escs);
+            arm_switch_was_low = false;
+        }
+    }
+    if (service_due) {
+        update_buzzer(&state->receiver);
+    }
+    state->imu_task.rate_hz =
+        imu_get_update_rate_hz(escs_armed, state->loop_hz);
+    const bool imu_due = task_due(&state->imu_task, state->loop_hz);
+    if (imu_due) {
+        imu_update(escs_armed);
+    }
+    if (!apply_configurator_motor_test(&state->receiver, state->escs)) {
+        flight_control_step(
+            &state->receiver,
+            state->escs,
+            loop_period_us > UINT16_MAX
+                ? UINT16_MAX
+                : (uint16_t)loop_period_us,
+            esc_update_due);
+    }
+    if (!config_protocol_is_client_active()) {
+        flight_log_persist_if_ready();
+    }
+
+    if (task_due(&state->telemetry_task, state->loop_hz)) {
+        config_protocol_send_telemetry(&state->receiver,
+                                       imu_get_latest_sample(),
+                                       escs_armed,
+                                       state->loop_frequency_hz,
+                                       state->maximum_loop_period_us,
+                                       &rate_output);
+        state->maximum_loop_period_us = 0u;
+    }
+
+    if (time_reached(state->next_loop)) {
+        state->next_loop = delayed_by_us(get_absolute_time(),
+                                         1000000u / state->loop_hz);
+    }
+}
+
 int main(void)
 {
     esc_controller_preinit(esc_gpios, ESC_COUNT);
@@ -354,11 +450,11 @@ int main(void)
     esc_controller_set_dshot_rate(
         flight_settings_get()->dshot_rate_kbps);
 
-    esc_controller_t escs[ESC_COUNT];
+    main_loop_state_t loop = {0};
     for (uint8_t i = 0u; i < ESC_COUNT; ++i) {
-        esc_controller_init(&escs[i], esc_gpios[i]);
+        esc_controller_init(&loop.escs[i], esc_gpios[i]);
     }
-    esc_controller_startup_sequence(escs, ESC_COUNT);
+    esc_controller_startup_sequence(loop.escs, ESC_COUNT);
 
     config_protocol_init();
     sbus_receiver_init(SBUS_INPUT_GPIO);
@@ -370,106 +466,9 @@ int main(void)
     flight_log_init();
     arm_switch_was_low = false;
 
-    sbus_frame_t receiver = {0};
-    const uint32_t loop_hz = flight_settings_get()->main_loop_hz;
-    absolute_time_t next_loop = get_absolute_time();
-    uint32_t scheduler_tick = 0u;
-    uint32_t timing_remainder = 0u;
-    loop_task_t service_task = {0u, 1000u};
-    loop_task_t telemetry_task = {0u, 25u};
-    loop_task_t esc_task = {0u, loop_hz < 16000u ? loop_hz : 16000u};
-    loop_task_t imu_task = {0u, 8000u};
-    uint32_t loop_measurement_start_us = time_us_32();
-    uint32_t loop_measurement_count = 0u;
-    float loop_frequency_hz = (float)loop_hz;
-    uint32_t maximum_loop_period_us = 0u;
-    uint32_t previous_loop_start_us = time_us_32();
+    main_loop_state_init(&loop);
 
     while (true) {
-        busy_wait_until(next_loop);
-        ++scheduler_tick;
-        if (scheduler_tick >= loop_hz) {
-            scheduler_tick = 0u;
-        }
-        const bool service_due = task_due(&service_task, loop_hz);
-        const bool esc_update_due = task_due(&esc_task, loop_hz);
-        const uint32_t loop_start_us = time_us_32();
-        const uint32_t loop_period_us = loop_start_us - previous_loop_start_us;
-        previous_loop_start_us = loop_start_us;
-        if (loop_period_us > maximum_loop_period_us) {
-            maximum_loop_period_us = loop_period_us;
-        }
-        ++loop_measurement_count;
-        const uint32_t measurement_period_us =
-            loop_start_us - loop_measurement_start_us;
-        if (measurement_period_us >= 250000u) {
-            loop_frequency_hz =
-                ((float)loop_measurement_count * 1000000.0f) /
-                (float)measurement_period_us;
-            loop_measurement_start_us = loop_start_us;
-            loop_measurement_count = 0u;
-        }
-
-        uint32_t loop_delay_us = 1000000u / loop_hz;
-        timing_remainder += 1000000u % loop_hz;
-        if (timing_remainder >= loop_hz) {
-            timing_remainder -= loop_hz;
-            ++loop_delay_us;
-        }
-        next_loop = delayed_by_us(next_loop, loop_delay_us);
-
-        sbus_receiver_read(&receiver);
-        if (service_due) {
-            status_led_update(receiver.signal_valid);
-        }
-        if (service_due) {
-            const bool simulation_was_enabled =
-                config_protocol_pid_simulation_enabled();
-            config_protocol_update(&receiver, escs_armed);
-            if (simulation_was_enabled &&
-                !config_protocol_pid_simulation_enabled() && escs_armed) {
-                stop_flight(FLIGHT_LOG_FLAG_STOP_DISARM, escs);
-                arm_switch_was_low = false;
-            }
-        }
-        if (service_due) {
-            update_buzzer(&receiver);
-        }
-#if IMU_BACKEND == IMU_BACKEND_MPU6500_SPI
-        imu_task.rate_hz = escs_armed ? loop_hz : 8000u;
-#else
-        imu_task.rate_hz = 8000u;
-#endif
-        const bool imu_due = task_due(&imu_task, loop_hz);
-        if (imu_due) {
-            imu_update(escs_armed);
-        }
-        if (!apply_configurator_motor_test(&receiver, escs)) {
-            flight_control_step(
-                &receiver,
-                escs,
-                loop_period_us > UINT16_MAX
-                    ? UINT16_MAX
-                    : (uint16_t)loop_period_us,
-                esc_update_due);
-        }
-        if (!config_protocol_is_client_active()) {
-            flight_log_persist_if_ready();
-        }
-
-        if (task_due(&telemetry_task, loop_hz)) {
-            config_protocol_send_telemetry(&receiver,
-                                           imu_get_latest_sample(),
-                                           escs_armed,
-                                           loop_frequency_hz,
-                                           maximum_loop_period_us,
-                                           &rate_output);
-            maximum_loop_period_us = 0u;
-        }
-
-        if (time_reached(next_loop)) {
-            next_loop = delayed_by_us(get_absolute_time(),
-                                      1000000u / loop_hz);
-        }
+        main_loop_step(&loop);
     }
 }

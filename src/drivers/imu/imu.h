@@ -21,5 +21,7 @@ bool imu_update(bool gyro_only);
 const imu_sample_t *imu_get_latest_sample(void);
 bool imu_is_available(void);
 const char *imu_get_name(void);
+uint32_t imu_get_update_rate_hz(bool gyro_only,
+                                uint32_t scheduler_rate_hz);
 
 #endif
