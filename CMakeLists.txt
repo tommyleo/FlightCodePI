@@ -39,6 +39,7 @@ pico_sdk_init()
 add_executable(FlightCodePI
         src/app/main.c
         src/control/rate_controller.c
+        src/drivers/battery/battery_voltage.c
         src/drivers/imu/imu.c
         src/drivers/imu/mpu6050.c
         src/drivers/imu/mpu6500.c
@@ -68,6 +69,7 @@ pico_enable_stdio_usb(FlightCodePI 1)
 target_link_libraries(FlightCodePI
         pico_stdlib
         hardware_clocks
+        hardware_adc
         hardware_flash
         hardware_i2c
         hardware_pio
@@ -85,6 +87,7 @@ endif()
 target_include_directories(FlightCodePI PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/src/app
         ${CMAKE_CURRENT_LIST_DIR}/src/control
+        ${CMAKE_CURRENT_LIST_DIR}/src/drivers/battery
         ${CMAKE_CURRENT_LIST_DIR}/src/drivers/imu
         ${CMAKE_CURRENT_LIST_DIR}/src/drivers/motors
         ${CMAKE_CURRENT_LIST_DIR}/src/drivers/receiver

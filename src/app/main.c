@@ -4,6 +4,7 @@
 #include "main.h"
 
 #include "pico/stdlib.h"
+#include "battery_voltage.h"
 #include "config_protocol.h"
 #include "esc_controller.h"
 #include "flight_log.h"
@@ -405,6 +406,8 @@ static void main_loop_step(main_loop_state_t *state)
     }
     if (service_due) {
         update_buzzer(&state->receiver);
+        battery_voltage_update();
+        flight_log_set_battery_voltage(battery_voltage_get());
     }
     state->imu_task.rate_hz =
         imu_get_update_rate_hz(escs_armed, state->loop_hz);
@@ -447,6 +450,7 @@ int main(void)
     stdio_init_all();
     status_led_init();
     flight_settings_init();
+    battery_voltage_init();
     esc_controller_set_dshot_rate(
         flight_settings_get()->dshot_rate_kbps);
 

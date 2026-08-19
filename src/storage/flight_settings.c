@@ -10,7 +10,8 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 7u
+#define SETTINGS_VERSION 8u
+#define SETTINGS_LEGACY_VERSION_7 7u
 #define SETTINGS_LEGACY_VERSION_6 6u
 #define SETTINGS_LEGACY_VERSION_5 5u
 #define SETTINGS_LEGACY_VERSION 3u
@@ -23,6 +24,13 @@ typedef struct {
     uint8_t settings[offsetof(flight_settings_t, main_loop_hz)];
     uint32_t checksum;
 } legacy_record_v6_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, vbat_multiplier)];
+    uint32_t checksum;
+} legacy_record_v7_t;
 
 typedef struct {
     pid_axis_t roll;
@@ -173,7 +181,8 @@ static bool valid_settings(const flight_settings_t *settings)
            settings->arm_min_us >= 900u && settings->arm_max_us <= 2100u &&
            settings->arm_min_us < settings->arm_max_us &&
            settings->beep_min_us >= 900u && settings->beep_max_us <= 2100u &&
-           settings->beep_min_us < settings->beep_max_us;
+           settings->beep_min_us < settings->beep_max_us &&
+           finite_range(settings->vbat_multiplier, 0.5f, 1.5f);
 
 }
 
@@ -208,6 +217,7 @@ void flight_settings_reset_defaults(void)
         .beep_min_us = 1950u,
         .beep_max_us = 2100u,
         .main_loop_hz = 16000u,
+        .vbat_multiplier = 1.0f,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -227,6 +237,19 @@ void flight_settings_init(void)
          stored->settings.main_loop_hz == 16000u)) {
         current_settings = stored->settings;
         settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v7_t *legacy_v7 =
+        (const legacy_record_v7_t *)flash;
+    if (legacy_v7->magic == SETTINGS_MAGIC &&
+        legacy_v7->version == SETTINGS_LEGACY_VERSION_7 &&
+        legacy_v7->checksum == hash_record(
+            legacy_v7, offsetof(legacy_record_v7_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v7->settings,
+               sizeof(legacy_v7->settings));
+        settings_saved = false;
         return;
     }
 

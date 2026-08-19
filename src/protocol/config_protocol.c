@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "battery_voltage.h"
 #include "esc_controller.h"
 #include "flight_log.h"
 #include "flight_settings.h"
@@ -57,6 +58,13 @@ static void send_main_loop(void)
 {
     printf("@CFG MAIN_LOOP %lu %u\n",
            (unsigned long)flight_settings_get()->main_loop_hz,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_vbat_multiplier(void)
+{
+    printf("@CFG VBAT_MULTIPLIER %.3f %u\n",
+           flight_settings_get()->vbat_multiplier,
            flight_settings_are_saved() ? 1u : 0u);
 }
 
@@ -152,6 +160,7 @@ static void send_all_settings(void)
     send_filters();
     send_receiver_config();
     send_main_loop();
+    send_vbat_multiplier();
 }
 
 static void send_flight_log_info(const sbus_frame_t *receiver)
@@ -184,7 +193,7 @@ static void process_command(const char *command,
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
                "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
-               "TELEMETRY_EXT RECEIVER_CONFIG\n");
+               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE VBAT_CALIBRATION\n");
         printf("@CFG RECEIVER_PROTOCOLS SBUS\n");
         printf("@CFG IMU %s %u\n",
                imu_get_name(),
@@ -215,6 +224,10 @@ static void process_command(const char *command,
     }
     if (strcmp(command, "GET_MAIN_LOOP") == 0) {
         send_main_loop();
+        return;
+    }
+    if (strcmp(command, "GET_VBAT_MULTIPLIER") == 0) {
+        send_vbat_multiplier();
         return;
     }
     if (strcmp(command, "GET_BOARD_ALIGNMENT") == 0) {
@@ -399,6 +412,14 @@ static void process_command(const char *command,
     }
 
     flight_settings_t settings = *flight_settings_get();
+    if (sscanf(command, "SET_VBAT_MULTIPLIER %f",
+               &settings.vbat_multiplier) == 1) {
+        printf(flight_settings_set(&settings)
+                   ? "@CFG OK SET_VBAT_MULTIPLIER\n"
+                   : "@CFG ERROR INVALID_VBAT_MULTIPLIER\n");
+        send_vbat_multiplier();
+        return;
+    }
     char receiver_protocol[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
@@ -684,6 +705,8 @@ void config_protocol_send_telemetry(const sbus_frame_t *receiver,
                                     const rate_controller_output_t *control)
 {
     if (!client_active) return;
+
+    printf("@CFG BATTERY_VOLTAGE %.2f\n", battery_voltage_get());
 
     static uint32_t last_sbus_diagnostics_us;
     const uint32_t now_us = time_us_32();

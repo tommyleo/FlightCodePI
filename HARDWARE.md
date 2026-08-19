@@ -13,6 +13,7 @@ the USB connector at the top.
 | Motor 3 ESC signal | GP3 | 5 | Output | Rear left, DSHOT |
 | Motor 4 ESC signal | GP6 | 9 | Output | Front left, DSHOT |
 | Active buzzer control | GP7 | 10 | Output | Active high, controlled by CH5 |
+| VBAT sense pad | GP26 / ADC0 | 31 | Input | 11:1 divider required; never connect the battery directly |
 | IMU MISO / AD0 | GP16 | 21 | Input | SPI0 RX |
 | IMU chip select / NCS | GP17 | 22 | Output | Active low |
 | IMU clock / SCL | GP18 | 24 | Output | SPI0 SCK |
@@ -57,6 +58,25 @@ Use a 3.3 V active buzzer only if its current is within the GPIO limit. For a
 5 V or higher-current buzzer, drive it through a transistor or MOSFET with a
 flyback diode when required. Always connect the driver ground to Pico GND.
 
+## VBAT voltage sensing
+
+GP26 (physical pin 31) is the FlightCodePI **VBAT** pad. Build an 11:1 divider
+to match Betaflight's standard `vbat_scale=110`:
+
+```text
+Battery + ---- 100 kΩ ----+---- GP26 / VBAT
+                          |
+                         10 kΩ
+                          |
+Battery - / GND ----------+---- Pico GND
+```
+
+An optional 100 nF ceramic capacitor from GP26/VBAT to GND reduces motor and
+ESC noise. The 100 kΩ/10 kΩ divider supports batteries up to 8S while keeping
+the ADC input below 3.3 V. Never connect battery voltage directly to GP26.
+The Configurator Setup page provides a persistent 0.500–1.500 final multiplier,
+defaulting to 1.000; compare its reading with a multimeter before flight.
+
 ## Power and grounding
 
 Do not power motors or ESC power stages from the Pico. Power them from the
@@ -70,6 +90,6 @@ for the ESC signal returns.
 
 ## Currently unused GPIOs
 
-GP4, GP5, GP8-GP15, GP20-GP22 and GP26-GP28 are not assigned by the current
+GP4, GP5, GP8-GP15, GP20-GP22, GP27 and GP28 are not assigned by the current
 firmware. Do not connect new peripherals to them without also checking future
 firmware changes and the Pico board documentation.
