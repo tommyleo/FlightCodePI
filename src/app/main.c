@@ -465,7 +465,7 @@ int main(void)
     gpio_init(BUZZER_GPIO);
     gpio_set_dir(BUZZER_GPIO, GPIO_OUT);
     gpio_put(BUZZER_GPIO, false);
-    imu_init();
+    imu_init(flight_settings_get()->main_loop_hz);
     rate_controller_init();
     flight_log_init();
     arm_switch_was_low = false;

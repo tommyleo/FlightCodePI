@@ -59,6 +59,8 @@ static void send_main_loop(void)
     printf("@CFG MAIN_LOOP %lu %u\n",
            (unsigned long)flight_settings_get()->main_loop_hz,
            flight_settings_are_saved() ? 1u : 0u);
+    printf("@CFG GYRO_RATE %lu\n",
+           (unsigned long)imu_get_gyro_rate_hz());
 }
 
 static void send_vbat_multiplier(void)

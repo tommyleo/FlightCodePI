@@ -14,6 +14,7 @@
 static imu_sample_t latest_sample;
 static bool imu_available;
 static bool gyro_only_active;
+static uint32_t configured_scheduler_rate_hz;
 
 static void apply_sensor_mounting(float *x, float *y, float *z)
 {
@@ -94,9 +95,10 @@ static mpu6500_t imu_device;
 #error "Backend IMU non supportato"
 #endif
 
-bool imu_init(void)
+bool imu_init(uint32_t scheduler_rate_hz)
 {
     latest_sample = (imu_sample_t){0};
+    configured_scheduler_rate_hz = scheduler_rate_hz;
 
 #if IMU_BACKEND == IMU_BACKEND_MPU6050_I2C
     i2c_inst_t *i2c = IMU_I2C_INDEX == 0u ? i2c0 : i2c1;
@@ -133,7 +135,8 @@ bool imu_update(bool gyro_only)
     const bool updated = mpu6050_read(&imu_device, &latest_sample);
 #elif IMU_BACKEND == IMU_BACKEND_MPU6500_SPI
     if (gyro_only != gyro_only_active) {
-        if (!mpu6500_set_gyro_only(&imu_device, gyro_only)) {
+        if (!mpu6500_set_gyro_only(&imu_device, gyro_only,
+                                   configured_scheduler_rate_hz)) {
             latest_sample.valid = false;
             return false;
         }
@@ -182,9 +185,14 @@ uint32_t imu_get_update_rate_hz(bool gyro_only,
     const uint32_t sensor_rate_hz = mpu6050_get_gyro_rate_hz();
 #elif IMU_BACKEND == IMU_BACKEND_MPU6500_SPI
     const uint32_t sensor_rate_hz =
-        mpu6500_get_gyro_rate_hz(gyro_only);
+        mpu6500_get_gyro_rate_hz(gyro_only, scheduler_rate_hz);
 #endif
     return sensor_rate_hz < scheduler_rate_hz
         ? sensor_rate_hz
         : scheduler_rate_hz;
+}
+
+uint32_t imu_get_gyro_rate_hz(void)
+{
+    return imu_get_update_rate_hz(true, configured_scheduler_rate_hz);
 }

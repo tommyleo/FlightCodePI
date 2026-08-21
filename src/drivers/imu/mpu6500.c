@@ -155,14 +155,20 @@ bool mpu6500_read(mpu6500_t *device, imu_sample_t *sample)
     return true;
 }
 
-bool mpu6500_set_gyro_only(mpu6500_t *device, bool enabled)
+bool mpu6500_set_gyro_only(mpu6500_t *device, bool enabled,
+                           uint32_t scheduler_rate_hz)
 {
     if (!device->initialized) {
         return false;
     }
-    /* FCHOICE_B=01 selects the 32 kHz gyro path; standby all accel axes. */
+    /*
+     * The filtered MPU6500 path is already 8 kHz. Select the 32 kHz gyro
+     * path only when a 16 kHz scheduler needs it, then sample it at the
+     * scheduler rate. Standby all accelerometer axes while armed.
+     */
+    const bool high_rate_gyro = enabled && scheduler_rate_hz > 8000u;
     if (!write_register(device, MPU6500_REG_GYRO_CONFIG,
-                        enabled ? 0x19u : 0x18u)) {
+                        high_rate_gyro ? 0x19u : 0x18u)) {
         return false;
     }
     return write_register(device, MPU6500_REG_PWR_MGMT_2,
@@ -199,7 +205,8 @@ const char *mpu6500_get_name(const mpu6500_t *device)
     }
     return "MPU6500 SPI";
 }
-uint32_t mpu6500_get_gyro_rate_hz(bool gyro_only)
+uint32_t mpu6500_get_gyro_rate_hz(bool gyro_only,
+                                  uint32_t scheduler_rate_hz)
 {
-    return gyro_only ? 32000u : 8000u;
+    return gyro_only && scheduler_rate_hz > 8000u ? 32000u : 8000u;
 }
