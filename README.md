@@ -6,11 +6,15 @@ the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 
 ## Features
 
-- configurable 8 or 16 kHz PID and ESC loop;
-- MPU6500/9250 gyro sampling follows an 8 kHz main loop directly; at 16 kHz it
-  uses the sensor's 32 kHz gyro-only path and samples it at the 16 kHz scheduler
-  rate while armed;
-- MPU6050 remains limited to its configured 1 kHz filtered sample rate;
+- selectable 8 or 16 kHz main scheduler for motor output and timed system
+  tasks;
+- PID updates remain synchronized to fresh gyroscope samples;
+- with an MPU6500/9250, the gyroscope and PID follow the 8 kHz scheduler
+  directly; at 16 kHz the firmware uses the sensor's 32 kHz gyro-only path and
+  samples it at the 16 kHz scheduler rate while armed;
+- with an MPU6050, the gyroscope and PID remain limited to the configured 1 kHz
+  filtered sample rate while the main scheduler and motor output can run at 8
+  or 16 kHz;
 - MPU6500, MPU9250, or MPU9255 on SPI0;
 - 16-channel SBUS receiver;
 - DSHOT300, DSHOT600, and DSHOT1200;
