@@ -26,6 +26,8 @@ typedef struct {
     float loop_frequency_hz;
     uint32_t maximum_loop_period_us;
     uint32_t previous_loop_start_us;
+    uint32_t previous_gyro_sample_us;
+    uint16_t gyro_loop_period_us;
     esc_controller_t escs[MAIN_ESC_COUNT];
     sbus_frame_t receiver;
 } main_loop_state_t;

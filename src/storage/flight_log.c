@@ -10,11 +10,8 @@
 #include "flight_settings.h"
 #include "imu.h"
 
-#define FLIGHT_LOG_CAPACITY 4096u
-#define CONTROL_LOOP_HZ 16000u
-#define LOG_DECIMATION (CONTROL_LOOP_HZ / FLIGHT_LOG_RATE_HZ)
 #define LOG_FLASH_MAGIC 0x50494c47u
-#define LOG_FLASH_VERSION 4u
+#define LOG_FLASH_VERSION 5u
 #define LOG_FLASH_SECTORS 25u
 #define LOG_FLASH_SIZE (LOG_FLASH_SECTORS * FLASH_SECTOR_SIZE)
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
@@ -32,10 +29,19 @@ typedef struct {
     flight_log_metadata_t metadata;
 } log_header_t;
 
+#define FLIGHT_LOG_CAPACITY \
+    ((LOG_FLASH_SIZE - sizeof(log_header_t)) / sizeof(flight_log_record_t))
+
+_Static_assert(sizeof(log_header_t) +
+                   FLIGHT_LOG_CAPACITY * sizeof(flight_log_record_t) <=
+                   LOG_FLASH_SIZE,
+               "flight log must fit in its reserved flash area");
+
 static flight_log_record_t records[FLIGHT_LOG_CAPACITY];
 static uint32_t write_index;
 static uint32_t record_count;
 static uint16_t decimation_count;
+static uint16_t log_decimation = 1u;
 static bool recording;
 static bool inhibited;
 static bool using_flash;
@@ -159,6 +165,8 @@ void flight_log_start(void)
     decimation_count = 0u;
     flight_qualified = false;
     const flight_settings_t *const s = flight_settings_get();
+    log_decimation = (uint16_t)(s->main_loop_hz / FLIGHT_LOG_RATE_HZ);
+    if (log_decimation == 0u) log_decimation = 1u;
     memset(&flight_metadata, 0, sizeof(flight_metadata));
     flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
     flight_metadata.main_loop_hz = s->main_loop_hz;
@@ -287,28 +295,29 @@ void flight_log_persist_if_ready(void)
 
 void flight_log_record(const float gyro[3],
                        const float setpoint[3],
-                       const float pid[3], const float p_term[3],
+                       const float p_term[3],
                        const float i_term[3], const float d_term[3],
+                       const float ff_term[3],
                        const float motors[4],
                        float throttle_percent,
                        bool saturated,
-                       uint16_t loop_us)
+                       uint16_t main_loop_us, uint16_t gyro_loop_us)
 {
     if (!recording || inhibited) return;
     if (throttle_percent > LOG_MIN_FLIGHT_THROTTLE_PERCENT) {
         flight_qualified = true;
     }
-    if (++decimation_count < LOG_DECIMATION) return;
+    if (++decimation_count < log_decimation) return;
     decimation_count = 0u;
 
     flight_log_record_t *item = &records[write_index];
     for (uint8_t i = 0u; i < 3u; ++i) {
         item->gyro[i] = scaled_i16(gyro[i], 10.0f);
         item->setpoint[i] = scaled_i16(setpoint[i], 10.0f);
-        item->pid[i] = scaled_pid(pid[i]);
         item->p_term[i] = scaled_pid(p_term[i]);
         item->i_term[i] = scaled_pid(i_term[i]);
         item->d_term[i] = scaled_pid(d_term[i]);
+        item->ff_term[i] = scaled_pid(ff_term[i]);
     }
     for (uint8_t i = 0u; i < 4u; ++i) {
         const float percent =
@@ -320,11 +329,12 @@ void flight_log_record(const float gyro[3],
         (throttle_percent > 100.0f ? 100.0f : throttle_percent);
     item->throttle = (uint8_t)lroundf(throttle_percent * 2.0f);
     item->flags = saturated ? FLIGHT_LOG_FLAG_MIXER_SATURATED : 0u;
-    item->loop_us = loop_us;
+    item->main_loop_us = main_loop_us;
+    item->gyro_loop_us = gyro_loop_us;
     item->battery_centivolts = battery_centivolts;
     item->cell_centivolts = cell_centivolts;
     item->battery_cells = battery_cells;
-    memset(item->reserved, 0, sizeof(item->reserved));
+    item->reserved = 0u;
 
     write_index = (write_index + 1u) % FLIGHT_LOG_CAPACITY;
     if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;

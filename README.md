@@ -30,11 +30,17 @@ the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
 - extended telemetry and receiver diagnostics;
 - GP26/ADC0 battery sensing with Betaflight scale 110 and persistent final
   calibration multiplier;
-- persistent 200 Hz flight log with 4,096 samples, retained above 10% throttle;
+- persistent 200 Hz flight log sized to the reserved flash area and retained
+  above 10% throttle;
 - USB BOOTSEL restart from the configurator.
 - onboard status LED flashes once per second as a firmware heartbeat and twice
   per second when a valid SBUS signal is present;
 - configured buzzer mode produces two short beeps every 500 ms.
+
+Version 2 flight-log metadata and version 7 Configurator JSON logs record both
+the measured main-scheduler period and the interval between fresh gyroscope/PID
+updates. Each sample exposes the periods in microseconds and their derived
+frequencies, alongside the separated P/I/D/FF terms.
 
 ## Supported boards
 

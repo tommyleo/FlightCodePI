@@ -212,7 +212,8 @@ static void stop_flight(uint8_t reason,
 
 static void flight_control_step(const sbus_frame_t *receiver,
                                 esc_controller_t escs[ESC_COUNT],
-                                uint16_t loop_period_us,
+                                uint16_t main_loop_us,
+                                uint16_t gyro_loop_us,
                                 bool esc_update_due)
 {
     const imu_sample_t *imu = imu_get_latest_sample();
@@ -326,17 +327,13 @@ static void flight_control_step(const sbus_frame_t *receiver,
         rate_output.pitch_setpoint_dps,
         rate_output.yaw_setpoint_dps,
     };
-    const float pid[3] = {
-        rate_output.roll_pid_percent,
-        rate_output.pitch_pid_percent,
-        rate_output.yaw_pid_percent,
-    };
-    flight_log_record(gyro, setpoints, pid, rate_output.p_term_percent,
-                      rate_output.i_term_percent,
-                      rate_output.d_term_percent, rate_output.motor_percent,
-                      (float)throttle_percent,
-                      rate_output.mixer_saturated,
-                      loop_period_us);
+    flight_log_record(gyro, setpoints, rate_output.p_term_percent,
+                       rate_output.i_term_percent,
+                       rate_output.d_term_percent,
+                       rate_output.ff_term_percent, rate_output.motor_percent,
+                       (float)throttle_percent,
+                       rate_output.mixer_saturated,
+                       main_loop_us, gyro_loop_us);
 
     if (config_protocol_motor_output_suppressed()) {
         stop_all_escs(escs);
@@ -358,6 +355,9 @@ static void main_loop_state_init(main_loop_state_t *state)
     state->loop_measurement_start_us = time_us_32();
     state->loop_frequency_hz = (float)state->loop_hz;
     state->previous_loop_start_us = time_us_32();
+    state->previous_gyro_sample_us = 0u;
+    state->gyro_loop_period_us = (uint16_t)(
+        1000000u / state->imu_task.rate_hz);
 }
 
 static void main_loop_step(main_loop_state_t *state)
@@ -413,7 +413,16 @@ static void main_loop_step(main_loop_state_t *state)
         imu_get_update_rate_hz(escs_armed, state->loop_hz);
     const bool imu_due = task_due(&state->imu_task, state->loop_hz);
     if (imu_due) {
-        imu_update(escs_armed);
+        if (imu_update(escs_armed)) {
+            const uint32_t sample_us = imu_get_latest_sample()->sample_time_us;
+            const uint32_t gyro_period_us =
+                state->previous_gyro_sample_us == 0u
+                    ? 1000000u / state->imu_task.rate_hz
+                    : sample_us - state->previous_gyro_sample_us;
+            state->previous_gyro_sample_us = sample_us;
+            state->gyro_loop_period_us = gyro_period_us > UINT16_MAX
+                ? UINT16_MAX : (uint16_t)gyro_period_us;
+        }
     }
     if (!apply_configurator_motor_test(&state->receiver, state->escs)) {
         flight_control_step(
@@ -422,6 +431,7 @@ static void main_loop_step(main_loop_state_t *state)
             loop_period_us > UINT16_MAX
                 ? UINT16_MAX
                 : (uint16_t)loop_period_us,
+            state->gyro_loop_period_us,
             esc_update_due);
     }
     if (!config_protocol_is_client_active()) {

@@ -20,6 +20,7 @@ typedef struct {
     float p_term_percent[3];
     float i_term_percent[3];
     float d_term_percent[3];
+    float ff_term_percent[3];
     bool mixer_saturated;
 } rate_controller_output_t;
 

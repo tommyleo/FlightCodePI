@@ -83,9 +83,9 @@ static float pid_update(pid_state_t *state,
                          float output_limit,
                          float tpa_factor,
                          float dterm_lpf_hz, bool integral_enabled,
-                         bool relax_integral,
-                         float *p_out, float *i_out,
-                         float *d_out)
+                          bool relax_integral,
+                          float *p_out, float *i_out,
+                          float *d_out, float *ff_out)
 {
     const float error = setpoint - measured_rate;
     float integral_factor = 1.0f;
@@ -125,8 +125,8 @@ static float pid_update(pid_state_t *state,
     *p_out = gains->kp * tpa_factor * error;
     *i_out = state->integral;
     *d_out = gains->kd * tpa_factor * state->dterm;
-    return clamp_float(*p_out + *i_out + *d_out +
-                           feedforward * setpoint,
+    *ff_out = feedforward * setpoint;
+    return clamp_float(*p_out + *i_out + *d_out + *ff_out,
                        -output_limit,
                        output_limit);
 }
@@ -328,7 +328,8 @@ bool rate_controller_update(const imu_sample_t *imu,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
                    settings->dterm_lpf_hz, airmode_active, false,
                    &output->p_term_percent[0],
-                   &output->i_term_percent[0], &output->d_term_percent[0]);
+                   &output->i_term_percent[0], &output->d_term_percent[0],
+                   &output->ff_term_percent[0]);
     output->pitch_pid_percent =
         pid_update(&pitch_pid, &settings->pitch,
                    output->pitch_setpoint_dps, output->pitch_rate_dps,
@@ -336,15 +337,17 @@ bool rate_controller_update(const imu_sample_t *imu,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
                    settings->dterm_lpf_hz, airmode_active, false,
                    &output->p_term_percent[1],
-                   &output->i_term_percent[1], &output->d_term_percent[1]);
+                   &output->i_term_percent[1], &output->d_term_percent[1],
+                   &output->ff_term_percent[1]);
     output->yaw_pid_percent =
         pid_update(&yaw_pid, &settings->yaw,
                    output->yaw_setpoint_dps, output->yaw_rate_dps,
                    settings->yaw_feedforward, dt,
                    PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   settings->dterm_lpf_hz, airmode_active, true,
-                   &output->p_term_percent[2], &output->i_term_percent[2],
-                   &output->d_term_percent[2]);
+                  settings->dterm_lpf_hz, airmode_active, true,
+                  &output->p_term_percent[2], &output->i_term_percent[2],
+                  &output->d_term_percent[2],
+                  &output->ff_term_percent[2]);
 
     const float mixer_yaw =
         settings->motor_direction_reversed != 0u

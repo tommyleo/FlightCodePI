@@ -15,21 +15,25 @@
 typedef struct __attribute__((packed)) {
     int16_t gyro[3];
     int16_t setpoint[3];
-    int8_t pid[3];
     uint8_t motor[4];
     uint8_t throttle;
     uint8_t flags;
-    uint16_t loop_us;
+    uint16_t main_loop_us;
+    uint16_t gyro_loop_us;
     uint16_t battery_centivolts;
     uint16_t cell_centivolts;
     uint8_t battery_cells;
     int8_t p_term[3];
     int8_t i_term[3];
     int8_t d_term[3];
-    uint8_t reserved[3];
+    int8_t ff_term[3];
+    uint8_t reserved;
 } flight_log_record_t;
 
-#define FLIGHT_LOG_METADATA_VERSION 1u
+_Static_assert(sizeof(flight_log_record_t) == 40u,
+               "flight log record format must remain 40 bytes");
+
+#define FLIGHT_LOG_METADATA_VERSION 2u
 typedef struct __attribute__((packed)) {
     uint32_t version, main_loop_hz, gyro_rate_hz, log_rate_hz;
     float pids[9], rates[4], feedforward[3], tpa[2], filters[2], alignment[3];
@@ -51,11 +55,12 @@ bool flight_log_get_metadata(flight_log_metadata_t *metadata);
 void flight_log_persist_if_ready(void);
 void flight_log_record(const float gyro[3],
                        const float setpoint[3],
-                       const float pid[3], const float p_term[3],
+                       const float p_term[3],
                        const float i_term[3], const float d_term[3],
+                       const float ff_term[3],
                        const float motors[4],
                        float throttle_percent,
                        bool mixer_saturated,
-                       uint16_t loop_us);
+                       uint16_t main_loop_us, uint16_t gyro_loop_us);
 
 #endif
