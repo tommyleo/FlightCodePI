@@ -1,8 +1,12 @@
 # FlightCodePI
 
 Quad X rate-mode flight controller for Raspberry Pi Pico 2 and Pico 2 W,
-compatible with
-the shared configurator at `C:\SvilST\FlightCodeConfigurator`.
+compatible with the shared
+**[FlightCode Configurator](https://github.com/tommyleo/FlightCodeConfigurator)**.
+
+The Configurator provides firmware flashing, PID and rate tuning, filter and
+motor setup, live telemetry, protected diagnostics, calibration, and flight-log
+downloads through a single desktop, web, or Android interface.
 
 ## Features
 
