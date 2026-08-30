@@ -17,11 +17,18 @@
 #define YAW_ITERM_RELAX_LPF_HZ 8.0f
 #define YAW_ITERM_RELAX_THRESHOLD_DPS 20.0f
 #define AIRMODE_ACTIVATION_THROTTLE_PERCENT 10.0f
+#define DYNAMIC_D_RATE_START_DPS 150.0f
+#define DYNAMIC_D_RATE_FULL_DPS 500.0f
+#define DYNAMIC_D_ACCEL_START_DPS2 1000.0f
+#define DYNAMIC_D_ACCEL_FULL_DPS2 6000.0f
+#define DYNAMIC_D_ATTACK_S 0.010f
+#define DYNAMIC_D_RELEASE_S 0.080f
 
 typedef struct {
     float integral;
     float previous_rate;
     float dterm;
+    float dynamic_d_activity;
     float relaxed_setpoint;
 } pid_state_t;
 
@@ -82,7 +89,9 @@ static float pid_update(pid_state_t *state,
                          float dt,
                          float output_limit,
                          float tpa_factor,
-                         float dterm_lpf_hz, bool integral_enabled,
+                         float dterm_lpf_hz,
+                         float dynamic_d_boost_percent,
+                         bool integral_enabled,
                           bool relax_integral,
                           float *p_out, float *i_out,
                           float *d_out, float *ff_out)
@@ -121,10 +130,25 @@ static float pid_update(pid_state_t *state,
     const float d_rc =
         1.0f / (2.0f * FLIGHT_PI_F * dterm_lpf_hz);
     state->dterm += (dt / (d_rc + dt)) * (derivative - state->dterm);
+    const float rate_activity = clamp_float(
+        (fabsf(measured_rate) - DYNAMIC_D_RATE_START_DPS) /
+            (DYNAMIC_D_RATE_FULL_DPS - DYNAMIC_D_RATE_START_DPS),
+        0.0f, 1.0f);
+    const float propwash_activity = clamp_float(
+        (fabsf(state->dterm) - DYNAMIC_D_ACCEL_START_DPS2) /
+            (DYNAMIC_D_ACCEL_FULL_DPS2 - DYNAMIC_D_ACCEL_START_DPS2),
+        0.0f, 1.0f);
+    const float target_activity = fmaxf(rate_activity, propwash_activity);
+    const float activity_time = target_activity > state->dynamic_d_activity
+        ? DYNAMIC_D_ATTACK_S : DYNAMIC_D_RELEASE_S;
+    state->dynamic_d_activity += dt / (activity_time + dt) *
+        (target_activity - state->dynamic_d_activity);
+    const float dynamic_d_multiplier = 1.0f +
+        dynamic_d_boost_percent * 0.01f * state->dynamic_d_activity;
 
     *p_out = gains->kp * tpa_factor * error;
     *i_out = state->integral;
-    *d_out = gains->kd * tpa_factor * state->dterm;
+    *d_out = gains->kd * tpa_factor * dynamic_d_multiplier * state->dterm;
     *ff_out = feedforward * setpoint;
     return clamp_float(*p_out + *i_out + *d_out + *ff_out,
                        -output_limit,
@@ -326,7 +350,9 @@ bool rate_controller_update(const imu_sample_t *imu,
                    output->roll_setpoint_dps, output->roll_rate_dps,
                    settings->roll_feedforward, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   settings->dterm_lpf_hz, airmode_active, false,
+                   settings->dterm_lpf_hz,
+                   settings->dynamic_d_boost_percent,
+                   airmode_active, false,
                    &output->p_term_percent[0],
                    &output->i_term_percent[0], &output->d_term_percent[0],
                    &output->ff_term_percent[0]);
@@ -335,7 +361,9 @@ bool rate_controller_update(const imu_sample_t *imu,
                    output->pitch_setpoint_dps, output->pitch_rate_dps,
                    settings->pitch_feedforward, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                   settings->dterm_lpf_hz, airmode_active, false,
+                   settings->dterm_lpf_hz,
+                   settings->dynamic_d_boost_percent,
+                   airmode_active, false,
                    &output->p_term_percent[1],
                    &output->i_term_percent[1], &output->d_term_percent[1],
                    &output->ff_term_percent[1]);
@@ -344,7 +372,7 @@ bool rate_controller_update(const imu_sample_t *imu,
                    output->yaw_setpoint_dps, output->yaw_rate_dps,
                    settings->yaw_feedforward, dt,
                    PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor,
-                  settings->dterm_lpf_hz, airmode_active, true,
+                  settings->dterm_lpf_hz, 0.0f, airmode_active, true,
                   &output->p_term_percent[2], &output->i_term_percent[2],
                   &output->d_term_percent[2],
                   &output->ff_term_percent[2]);

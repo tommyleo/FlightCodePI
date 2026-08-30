@@ -40,6 +40,7 @@ typedef struct {
     float dterm_lpf_hz;
     uint32_t main_loop_hz;
     float vbat_multiplier;
+    float dynamic_d_boost_percent;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u

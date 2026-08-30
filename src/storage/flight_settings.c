@@ -10,7 +10,8 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 8u
+#define SETTINGS_VERSION 9u
+#define SETTINGS_LEGACY_VERSION_8 8u
 #define SETTINGS_LEGACY_VERSION_7 7u
 #define SETTINGS_LEGACY_VERSION_6 6u
 #define SETTINGS_LEGACY_VERSION_5 5u
@@ -31,6 +32,14 @@ typedef struct {
     uint8_t settings[offsetof(flight_settings_t, vbat_multiplier)];
     uint32_t checksum;
 } legacy_record_v7_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t,
+                              dynamic_d_boost_percent)];
+    uint32_t checksum;
+} legacy_record_v8_t;
 
 typedef struct {
     pid_axis_t roll;
@@ -175,6 +184,7 @@ static bool valid_settings(const flight_settings_t *settings)
            finite_range(settings->gyro_lpf_hz, 50.0f, 250.0f) &&
            finite_range(settings->dterm_lpf_hz, 20.0f, 200.0f) &&
            settings->dterm_lpf_hz <= settings->gyro_lpf_hz &&
+           finite_range(settings->dynamic_d_boost_percent, 0.0f, 50.0f) &&
            settings->receiver_channel_order <= RECEIVER_ORDER_AETR1234 &&
            settings->arm_channel >= 4u && settings->arm_channel < 16u &&
            settings->beep_channel >= 4u && settings->beep_channel < 16u &&
@@ -202,12 +212,13 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->tpa_breakpoint_percent = 70.0f;
     settings->gyro_lpf_hz = 100.0f;
     settings->dterm_lpf_hz = 60.0f;
+    settings->dynamic_d_boost_percent = 12.5f;
 }
 
 void flight_settings_reset_defaults(void)
 {
     current_settings = (flight_settings_t){
-        .dshot_rate_kbps = 300u,
+        .dshot_rate_kbps = 600u,
         .motor_idle_percent = 5.0f,
         .receiver_channel_order = RECEIVER_ORDER_TAER1234,
         .arm_channel = 5u,
@@ -253,6 +264,19 @@ void flight_settings_init(void)
         return;
     }
 
+    const legacy_record_v8_t *legacy_v8 =
+        (const legacy_record_v8_t *)flash;
+    if (legacy_v8->magic == SETTINGS_MAGIC &&
+        legacy_v8->version == SETTINGS_LEGACY_VERSION_8 &&
+        legacy_v8->checksum == hash_record(
+            legacy_v8, offsetof(legacy_record_v8_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v8->settings,
+               sizeof(legacy_v8->settings));
+        settings_saved = false;
+        return;
+    }
+
     const legacy_record_v6_t *legacy_v6 =
         (const legacy_record_v6_t *)flash;
     if (legacy_v6->magic == SETTINGS_MAGIC &&
@@ -265,7 +289,7 @@ void flight_settings_init(void)
         if (current_settings.dshot_rate_kbps != 300u &&
             current_settings.dshot_rate_kbps != 600u &&
             current_settings.dshot_rate_kbps != 1200u) {
-            current_settings.dshot_rate_kbps = 300u;
+            current_settings.dshot_rate_kbps = 600u;
         }
         settings_saved = false;
         return;

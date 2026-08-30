@@ -128,9 +128,10 @@ static void send_tpa(void)
 static void send_filters(void)
 {
     const flight_settings_t *settings = flight_settings_get();
-    printf("@CFG FILTERS %.1f %.1f %u\n",
+    printf("@CFG FILTERS %.1f %.1f %.1f %u\n",
            settings->gyro_lpf_hz,
            settings->dterm_lpf_hz,
+           settings->dynamic_d_boost_percent,
            flight_settings_are_saved() ? 1u : 0u);
 }
 
@@ -288,14 +289,14 @@ static void process_command(const char *command,
                metadata.pids[0], metadata.pids[1], metadata.pids[2],
                metadata.pids[3], metadata.pids[4], metadata.pids[5],
                metadata.pids[6], metadata.pids[7], metadata.pids[8]);
-        printf("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n",
+        printf("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
                metadata.rates[0], metadata.rates[1], metadata.rates[2],
                metadata.rates[3], metadata.feedforward[0],
                metadata.feedforward[1], metadata.feedforward[2],
                metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
                metadata.filters[1], metadata.alignment[0],
                metadata.alignment[1], metadata.alignment[2],
-               metadata.motor_idle_percent);
+               metadata.motor_idle_percent, metadata.reserved / 2.0f);
         printf("@CFG FLIGHT_LOG_METADATA_END\n");
         return;
     }
@@ -480,9 +481,10 @@ static void process_command(const char *command,
         send_tpa();
         return;
     }
-    if (sscanf(command, "SET_FILTERS %f %f",
+    if (sscanf(command, "SET_FILTERS %f %f %f",
                &settings.gyro_lpf_hz,
-               &settings.dterm_lpf_hz) == 2) {
+               &settings.dterm_lpf_hz,
+               &settings.dynamic_d_boost_percent) == 3) {
         const bool applied = flight_settings_set(&settings);
         printf(applied ? "@CFG OK SET_FILTERS\n"
                        : "@CFG ERROR INVALID_FILTERS\n");

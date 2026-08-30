@@ -188,6 +188,7 @@ void flight_log_start(void)
     flight_metadata.motor_idle_percent=s->motor_idle_percent; flight_metadata.motor_protocol=s->dshot_rate_kbps;
     flight_metadata.motor_direction_reversed=s->motor_direction_reversed;
     flight_metadata.initial_battery_centivolts=battery_centivolts; flight_metadata.initial_battery_cells=battery_cells;
+    flight_metadata.reserved=(uint8_t)lroundf(s->dynamic_d_boost_percent*2.0f);
     recording = true;
 }
 
