@@ -59,7 +59,7 @@ pico_generate_pio_header(FlightCodePI
 )
 
 pico_set_program_name(FlightCodePI "FlightCodePI")
-pico_set_program_version(FlightCodePI "0.1")
+pico_set_program_version(FlightCodePI "1.0.0")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(FlightCodePI 0)
