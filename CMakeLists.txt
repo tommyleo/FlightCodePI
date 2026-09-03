@@ -31,6 +31,8 @@ include(pico_sdk_import.cmake)
 
 project(FlightCodePI C CXX ASM)
 
+set(FLIGHTCODE_VERSION "1.1.0")
+
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
@@ -59,7 +61,10 @@ pico_generate_pio_header(FlightCodePI
 )
 
 pico_set_program_name(FlightCodePI "FlightCodePI")
-pico_set_program_version(FlightCodePI "1.0.0")
+pico_set_program_version(FlightCodePI "${FLIGHTCODE_VERSION}")
+target_compile_definitions(FlightCodePI PRIVATE
+        FLIGHTCODE_VERSION=\"${FLIGHTCODE_VERSION}\"
+)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(FlightCodePI 0)

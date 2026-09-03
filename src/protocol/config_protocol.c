@@ -192,7 +192,7 @@ static void process_command(const char *command,
     if (strcmp(command, "HELLO") == 0) {
         client_active = true;
         last_client_activity_us = time_us_32();
-        printf("@CFG HELLO FlightCode 3 PICO2_W\n");
+        printf("@CFG HELLO FlightCode 3 PICO2_W %s\n", FLIGHTCODE_VERSION);
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
                "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "

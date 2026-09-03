@@ -1,5 +1,7 @@
 # FlightCodePI
 
+Current release: **1.1.0**.
+
 ## FlightCode in action! 🚀
 
 **[Watch the flight video on YouTube](https://youtu.be/JjHND97abkM)**
