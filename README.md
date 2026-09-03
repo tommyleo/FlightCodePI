@@ -1,5 +1,9 @@
 # FlightCodePI
 
+## FlightCode in action! 🚀
+
+**[Watch the flight video on YouTube](https://youtu.be/JjHND97abkM)**
+
 Quad X rate-mode flight controller for Raspberry Pi Pico 2 and Pico 2 W,
 compatible with the shared
 **[FlightCode Configurator](https://github.com/tommyleo/FlightCodeConfigurator)**.
