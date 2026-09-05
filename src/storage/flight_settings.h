@@ -41,6 +41,7 @@ typedef struct {
     uint32_t main_loop_hz;
     float vbat_multiplier;
     float dynamic_d_boost_percent;
+    float throttle_rise_ms; /* 0 disables; full-scale rise time */
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u

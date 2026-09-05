@@ -1,4 +1,5 @@
 #include "rate_controller.h"
+#include "throttle_ramp.h"
 
 #include <math.h>
 #include <string.h>
@@ -56,6 +57,7 @@ static uint32_t previous_sample_time_us;
 static float stationary_time_s;
 static bool calibrated;
 static bool mixer_saturated;
+static float collective_throttle;
 static bool airmode_active;
 
 static float clamp_float(float value, float minimum, float maximum)
@@ -162,6 +164,7 @@ void rate_controller_reset(void)
     memset(&yaw_pid, 0, sizeof(yaw_pid));
     memset(gyro_filter, 0, sizeof(gyro_filter));
     mixer_saturated = false;
+    collective_throttle = 0.0f;
     airmode_active = false;
 }
 
@@ -323,7 +326,10 @@ bool rate_controller_update(const imu_sample_t *imu,
         return false;
     }
 
-    const float throttle = clamp_float((float)throttle_percent, 0.0f, 100.0f);
+    const float throttle = throttle_ramp_update(
+        &collective_throttle,
+        clamp_float((float)throttle_percent, 0.0f, 100.0f),
+        settings->throttle_rise_ms, dt);
     float tpa_factor = 1.0f;
     if (settings->tpa_attenuation > 0.0f &&
         throttle > settings->tpa_breakpoint_percent &&

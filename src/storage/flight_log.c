@@ -11,7 +11,7 @@
 #include "imu.h"
 
 #define LOG_FLASH_MAGIC 0x50494c47u
-#define LOG_FLASH_VERSION 5u
+#define LOG_FLASH_VERSION 6u
 #define LOG_FLASH_SECTORS 25u
 #define LOG_FLASH_SIZE (LOG_FLASH_SECTORS * FLASH_SECTOR_SIZE)
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
@@ -68,10 +68,17 @@ static const log_header_t *flash_header(void)
     return (const log_header_t *)(XIP_BASE + LOG_FLASH_OFFSET);
 }
 
+static size_t stored_header_size(void)
+{
+    const uint32_t *header = (const uint32_t *)(XIP_BASE + LOG_FLASH_OFFSET);
+    return sizeof(log_header_t) -
+        (header[1] == 5U ? sizeof(float) : 0U);
+}
+
 static const flight_log_record_t *flash_records(void)
 {
     return (const flight_log_record_t *)
-        (XIP_BASE + LOG_FLASH_OFFSET + sizeof(log_header_t));
+        (XIP_BASE + LOG_FLASH_OFFSET + stored_header_size());
 }
 
 static const flight_log_record_t *ram_record(uint32_t index)
@@ -114,10 +121,10 @@ void flight_log_init(void)
 
     const log_header_t *header = flash_header();
     const size_t stored_size =
-        sizeof(log_header_t) +
+        stored_header_size() +
         (size_t)header->count * sizeof(flight_log_record_t);
     if (header->magic == LOG_FLASH_MAGIC &&
-        header->version == LOG_FLASH_VERSION &&
+        (header->version == LOG_FLASH_VERSION || header->version == 5U) &&
         header->count > 0u &&
         header->count <= FLIGHT_LOG_CAPACITY &&
         header->rate_hz == FLIGHT_LOG_RATE_HZ &&
@@ -185,6 +192,7 @@ void flight_log_start(void)
     flight_metadata.tpa[0]=s->tpa_attenuation; flight_metadata.tpa[1]=s->tpa_breakpoint_percent;
     flight_metadata.filters[0]=s->gyro_lpf_hz; flight_metadata.filters[1]=s->dterm_lpf_hz;
     flight_metadata.alignment[0]=s->board_roll_deg; flight_metadata.alignment[1]=s->board_pitch_deg; flight_metadata.alignment[2]=s->board_yaw_deg;
+    flight_metadata.throttle_rise_ms = s->throttle_rise_ms;
     flight_metadata.motor_idle_percent=s->motor_idle_percent; flight_metadata.motor_protocol=s->dshot_rate_kbps;
     flight_metadata.motor_direction_reversed=s->motor_direction_reversed;
     flight_metadata.initial_battery_centivolts=battery_centivolts; flight_metadata.initial_battery_cells=battery_cells;
@@ -231,8 +239,8 @@ bool flight_log_get(uint32_t index, flight_log_record_t *record)
 bool flight_log_get_metadata(flight_log_metadata_t *metadata)
 {
     if (metadata == NULL) return false;
-    *metadata = using_flash ? flash_header()->metadata : flight_metadata;
-    return metadata->version == FLIGHT_LOG_METADATA_VERSION;
+    return flight_log_metadata_decode(metadata,
+        using_flash ? &flash_header()->metadata : &flight_metadata);
 }
 
 void flight_log_persist_if_ready(void)
