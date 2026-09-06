@@ -192,7 +192,7 @@ void flight_log_start(void)
     flight_metadata.tpa[0]=s->tpa_attenuation; flight_metadata.tpa[1]=s->tpa_breakpoint_percent;
     flight_metadata.filters[0]=s->gyro_lpf_hz; flight_metadata.filters[1]=s->dterm_lpf_hz;
     flight_metadata.alignment[0]=s->board_roll_deg; flight_metadata.alignment[1]=s->board_pitch_deg; flight_metadata.alignment[2]=s->board_yaw_deg;
-    flight_metadata.throttle_rise_ms = s->throttle_rise_ms;
+    flight_metadata.throttle_rise_ms = FLIGHT_THROTTLE_RISE_MS;
     flight_metadata.motor_idle_percent=s->motor_idle_percent; flight_metadata.motor_protocol=s->dshot_rate_kbps;
     flight_metadata.motor_direction_reversed=s->motor_direction_reversed;
     flight_metadata.initial_battery_centivolts=battery_centivolts; flight_metadata.initial_battery_cells=battery_cells;

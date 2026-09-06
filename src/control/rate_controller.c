@@ -329,7 +329,7 @@ bool rate_controller_update(const imu_sample_t *imu,
     const float throttle = throttle_ramp_update(
         &collective_throttle,
         clamp_float((float)throttle_percent, 0.0f, 100.0f),
-        settings->throttle_rise_ms, dt);
+        FLIGHT_THROTTLE_RISE_MS, dt);
     float tpa_factor = 1.0f;
     if (settings->tpa_attenuation > 0.0f &&
         throttle > settings->tpa_breakpoint_percent &&

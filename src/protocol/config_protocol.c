@@ -125,13 +125,6 @@ static void send_tpa(void)
            flight_settings_are_saved() ? 1u : 0u);
 }
 
-static void send_throttle_ramp(void)
-{
-    printf("@CFG THROTTLE_RAMP %.1f %u\n",
-           flight_settings_get()->throttle_rise_ms,
-           flight_settings_are_saved() ? 1u : 0u);
-}
-
 static void send_filters(void)
 {
     const flight_settings_t *settings = flight_settings_get();
@@ -168,7 +161,6 @@ static void send_all_settings(void)
     send_feedforward();
     send_tpa();
     send_filters();
-    send_throttle_ramp();
     send_receiver_config();
     send_main_loop();
     send_vbat_multiplier();
@@ -203,7 +195,7 @@ static void process_command(const char *command,
         printf("@CFG HELLO FlightCode 3 PICO2_W %s\n", FLIGHTCODE_VERSION);
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-               "FEEDFORWARD TPA FILTERS THROTTLE_RAMP GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
+               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
                "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE VBAT_CALIBRATION\n");
         printf("@CFG RECEIVER_PROTOCOLS SBUS\n");
         printf("@CFG IMU %s %u\n",
@@ -265,29 +257,8 @@ static void process_command(const char *command,
         send_tpa();
         return;
     }
-    if (strcmp(command, "GET_THROTTLE_RAMP") == 0) {
-        send_throttle_ramp();
-        return;
-    }
-    float rise_ms;
-    if (sscanf(command, "SET_THROTTLE_RAMP %f", &rise_ms) == 1) {
-        if (armed) {
-            printf("@CFG ERROR ARMED\n");
-        } else {
-            flight_settings_t updated = *flight_settings_get();
-            updated.throttle_rise_ms = rise_ms;
-            if (flight_settings_set(&updated)) {
-                printf("@CFG OK SET_THROTTLE_RAMP\n");
-                send_throttle_ramp();
-            } else {
-                printf("@CFG ERROR INVALID_THROTTLE_RAMP\n");
-            }
-        }
-        return;
-    }
     if (strcmp(command, "GET_FILTERS") == 0) {
         send_filters();
-        send_throttle_ramp();
         return;
     }
     if (strcmp(command, "GET_RECEIVER_CONFIG") == 0) {
@@ -522,7 +493,6 @@ static void process_command(const char *command,
             rate_controller_reset();
         }
         send_filters();
-        send_throttle_ramp();
         return;
     }
     if (sscanf(command, "SET_FEEDFORWARD %f %f %f",
@@ -627,7 +597,6 @@ static void process_command(const char *command,
         send_feedforward();
         send_tpa();
         send_filters();
-        send_throttle_ramp();
         send_main_loop();
         return;
     }
