@@ -221,7 +221,7 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->tpa_breakpoint_percent = 70.0f;
     settings->gyro_lpf_hz = 100.0f;
     settings->dterm_lpf_hz = 60.0f;
-    settings->dynamic_d_boost_percent = 12.5f;
+    settings->dynamic_d_boost_percent = 25.0f;
     settings->throttle_rise_ms = FLIGHT_THROTTLE_RISE_MS;
 }
 
