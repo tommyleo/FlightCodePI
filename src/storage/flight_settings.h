@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define FLIGHT_THROTTLE_RISE_MS 5.0f
 
 typedef struct {
     float kp;
@@ -43,8 +42,6 @@ typedef struct {
     uint32_t main_loop_hz;
     float vbat_multiplier;
     float dynamic_d_boost_percent;
-    /* Retained only to preserve the persisted-settings layout. */
-    float throttle_rise_ms;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u

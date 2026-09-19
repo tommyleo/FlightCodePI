@@ -17,6 +17,7 @@ typedef struct {
     uint32_t loop_hz;
     absolute_time_t next_loop;
     uint32_t timing_remainder;
+    uint32_t missed_loop_slots;
     loop_task_t service_task;
     loop_task_t telemetry_task;
     loop_task_t esc_task;

@@ -10,7 +10,7 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 10u
+#define SETTINGS_VERSION 11u
 #define SETTINGS_LEGACY_VERSION_9 9u
 #define SETTINGS_LEGACY_VERSION_8 8u
 #define SETTINGS_LEGACY_VERSION_7 7u
@@ -45,7 +45,7 @@ typedef struct {
 typedef struct {
     uint32_t magic;
     uint32_t version;
-    uint8_t settings[offsetof(flight_settings_t, throttle_rise_ms)];
+    uint8_t settings[sizeof(flight_settings_t)];
     uint32_t checksum;
 } legacy_record_v9_t;
 
@@ -175,7 +175,6 @@ static bool valid_settings(const flight_settings_t *settings)
            valid_pid(&settings->pitch) &&
            valid_pid(&settings->yaw) &&
            valid_dshot &&
-           finite_range(settings->throttle_rise_ms, 0.0f, 1000.0f) &&
            finite_range(settings->board_roll_deg, -180.0f, 180.0f) &&
            finite_range(settings->board_pitch_deg, -180.0f, 180.0f) &&
            finite_range(settings->board_yaw_deg, -180.0f, 180.0f) &&
@@ -222,7 +221,6 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->gyro_lpf_hz = 100.0f;
     settings->dterm_lpf_hz = 60.0f;
     settings->dynamic_d_boost_percent = 25.0f;
-    settings->throttle_rise_ms = FLIGHT_THROTTLE_RISE_MS;
 }
 
 void flight_settings_reset_defaults(void)

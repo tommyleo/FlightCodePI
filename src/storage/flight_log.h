@@ -14,6 +14,7 @@
 #define FLIGHT_LOG_FLAG_STOP_RX_FAILSAFE 0x10u
 #define FLIGHT_LOG_FLAG_STOP_RX_TIMEOUT 0x20u
 
+
 typedef struct __attribute__((packed)) {
     int16_t gyro[3];
     int16_t setpoint[3];
@@ -29,13 +30,13 @@ typedef struct __attribute__((packed)) {
     int8_t i_term[3];
     int8_t d_term[3];
     int8_t ff_term[3];
-    uint8_t reserved;
+    uint8_t reserved; /* retain a 40-byte stride for aligned record storage */
 } flight_log_record_t;
 
 _Static_assert(sizeof(flight_log_record_t) == 40u,
                "flight log record format must remain 40 bytes");
 
-#define FLIGHT_LOG_METADATA_VERSION 3u
+#define FLIGHT_LOG_METADATA_VERSION 4u
 typedef struct __attribute__((packed)) {
     uint32_t version, main_loop_hz, gyro_rate_hz, log_rate_hz;
     float pids[9], rates[4], feedforward[3], tpa[2], filters[2], alignment[3];
@@ -43,25 +44,17 @@ typedef struct __attribute__((packed)) {
     uint32_t motor_protocol, motor_direction_reversed, receiver_protocol;
     uint16_t initial_battery_centivolts;
     uint8_t initial_battery_cells, reserved;
-    float throttle_rise_ms; /* full-scale rise time in ms; v3+ */
 } flight_log_metadata_t;
 
-/* Version 2 ended before throttle_rise_ms. Never interpret trailing padding
- * or the first legacy sample as a saved ramp. Keep the original version. */
-_Static_assert(offsetof(flight_log_metadata_t, throttle_rise_ms) == 128U,
-               "legacy metadata prefix must remain 128 bytes");
-_Static_assert(sizeof(flight_log_metadata_t) == 132U,
-               "metadata v3 must remain 132 bytes");
+_Static_assert(sizeof(flight_log_metadata_t) == 128U,
+               "metadata v4 must remain 128 bytes");
 static inline bool flight_log_metadata_decode(flight_log_metadata_t *out,
                                                const void *stored)
 {
     uint32_t version;
     memcpy(&version, stored, sizeof(version));
-    if (version != 2U && version != FLIGHT_LOG_METADATA_VERSION) return false;
-    memset(out, 0, sizeof(*out));
-    memcpy(out, stored, version == 2U
-        ? offsetof(flight_log_metadata_t, throttle_rise_ms) : sizeof(*out));
-    if (version == 2U) out->throttle_rise_ms = -1.0f;
+    if (version != FLIGHT_LOG_METADATA_VERSION) return false;
+    memcpy(out, stored, sizeof(*out));
     return true;
 }
 

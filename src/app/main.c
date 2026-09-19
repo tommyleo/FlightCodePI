@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "main.h"
+#include "loop_deadline.h"
 
 #include "pico/stdlib.h"
 #include "battery_voltage.h"
@@ -317,6 +318,12 @@ static void flight_control_step(const sbus_frame_t *receiver,
         return;
     }
 
+    if (config_protocol_motor_output_suppressed()) {
+        stop_all_escs(escs);
+    } else if (esc_update_due) {
+        set_esc_outputs(escs, &rate_output);
+    }
+
     const float gyro[3] = {
         rate_output.roll_rate_dps,
         rate_output.pitch_rate_dps,
@@ -335,11 +342,7 @@ static void flight_control_step(const sbus_frame_t *receiver,
                        rate_output.mixer_saturated,
                        main_loop_us, gyro_loop_us);
 
-    if (config_protocol_motor_output_suppressed()) {
-        stop_all_escs(escs);
-    } else if (esc_update_due) {
-        set_esc_outputs(escs, &rate_output);
-    }
+
 }
 
 static void main_loop_state_init(main_loop_state_t *state)
@@ -448,10 +451,19 @@ static void main_loop_step(main_loop_state_t *state)
         state->maximum_loop_period_us = 0u;
     }
 
-    if (time_reached(state->next_loop)) {
-        state->next_loop = delayed_by_us(get_absolute_time(),
-                                         1000000u / state->loop_hz);
+    const absolute_time_t completed = get_absolute_time();
+    const int64_t late_us = absolute_time_diff_us(state->next_loop, completed);
+    if (late_us > 0) {
+        const uint32_t skipped =
+            (uint32_t)((uint64_t)late_us * state->loop_hz / 1000000U);
+        if (skipped != 0U) {
+            state->next_loop = delayed_by_us(state->next_loop,
+                loop_period_advance(state->loop_hz, skipped,
+                                    &state->timing_remainder));
+            state->missed_loop_slots += skipped;
+        }
     }
+
 }
 
 int main(void)

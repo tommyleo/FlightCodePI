@@ -1,4 +1,5 @@
 #include "config_protocol.h"
+#include "telemetry_text.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -289,15 +290,14 @@ static void process_command(const char *command,
                metadata.pids[0], metadata.pids[1], metadata.pids[2],
                metadata.pids[3], metadata.pids[4], metadata.pids[5],
                metadata.pids[6], metadata.pids[7], metadata.pids[8]);
-        printf("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f %.6f\n",
+        printf("@CFG FLIGHT_LOG_METADATA_TUNING %.2f %.2f %.2f %.4f %.6f %.6f %.6f %.4f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.1f\n",
                metadata.rates[0], metadata.rates[1], metadata.rates[2],
                metadata.rates[3], metadata.feedforward[0],
                metadata.feedforward[1], metadata.feedforward[2],
                metadata.tpa[0], metadata.tpa[1], metadata.filters[0],
                metadata.filters[1], metadata.alignment[0],
                metadata.alignment[1], metadata.alignment[2],
-               metadata.motor_idle_percent, metadata.reserved / 2.0f,
-               metadata.throttle_rise_ms);
+               metadata.motor_idle_percent, metadata.reserved / 2.0f);
         printf("@CFG FLIGHT_LOG_METADATA_END\n");
         return;
     }
@@ -713,7 +713,12 @@ void config_protocol_send_telemetry(const sbus_frame_t *receiver,
 {
     if (!client_active) return;
 
-    printf("@CFG BATTERY_VOLTAGE %.2f\n", battery_voltage_get());
+    char battery_line[48];
+    telemetry_text_t battery_text = {battery_line, sizeof(battery_line), 0U, true};
+    telemetry_literal(&battery_text, "@CFG BATTERY_VOLTAGE");
+    telemetry_fixed(&battery_text, battery_voltage_get(), 2U);
+    telemetry_char(&battery_text, '\n');
+    if (battery_text.valid) printf("%s", battery_line);
 
     static uint32_t last_sbus_diagnostics_us;
     const uint32_t now_us = time_us_32();
@@ -732,30 +737,35 @@ void config_protocol_send_telemetry(const sbus_frame_t *receiver,
 
     imu_sample_t corrected;
     rate_controller_get_corrected_imu(imu, &corrected);
-    printf("@CFG TELEMETRY %lu %u %u %.1f "
-           "%.3f %.3f %.3f %.3f %.3f %.3f",
-           (unsigned long)time_us_32(),
-           receiver->signal_valid ? 1u : 0u,
-           armed ? 1u : 0u,
-           loop_frequency_hz,
-           corrected.gyro_x_dps,
-           corrected.gyro_y_dps,
-           corrected.gyro_z_dps,
-           corrected.accel_x_g,
-           corrected.accel_y_g,
-           corrected.accel_z_g);
-    for (uint8_t i = 0u; i < SBUS_CHANNEL_COUNT; ++i) {
-        printf(" %u", receiver->signal_valid ? receiver->channel_us[i] : 0u);
+    char output[384];
+    telemetry_text_t text = {output, sizeof(output), 0U, true};
+    telemetry_literal(&text, "@CFG TELEMETRY");
+    telemetry_uint(&text, time_us_32());
+    telemetry_uint(&text, receiver->signal_valid ? 1U : 0U);
+    telemetry_uint(&text, armed ? 1U : 0U);
+    telemetry_fixed(&text, loop_frequency_hz, 1U);
+    telemetry_fixed(&text, corrected.gyro_x_dps, 3U);
+    telemetry_fixed(&text, corrected.gyro_y_dps, 3U);
+    telemetry_fixed(&text, corrected.gyro_z_dps, 3U);
+    telemetry_fixed(&text, corrected.accel_x_g, 3U);
+    telemetry_fixed(&text, corrected.accel_y_g, 3U);
+    telemetry_fixed(&text, corrected.accel_z_g, 3U);
+    for (uint8_t i = 0U; i < SBUS_CHANNEL_COUNT; ++i) {
+        telemetry_uint(&text, receiver->signal_valid ? receiver->channel_us[i] : 0U);
     }
-    for (uint8_t i = 0u; i < 4u; ++i) {
-        printf(" %.2f", control->motor_percent[i]);
+    for (uint8_t i = 0U; i < 4U; ++i) {
+        telemetry_fixed(&text, control->motor_percent[i], 2U);
     }
-    printf(" %u %lu %.3f %.3f %.3f %u %.2f\n",
-           rate_controller_is_calibrated() ? 1u : 0u,
-           (unsigned long)max_loop_period_us,
-           imu->gyro_x_dps,
-           imu->gyro_y_dps,
-           imu->gyro_z_dps,
-           rate_controller_get_calibration_samples(),
-           imu->temperature_c);
+    telemetry_uint(&text, rate_controller_is_calibrated() ? 1U : 0U);
+    telemetry_uint(&text, max_loop_period_us);
+    telemetry_fixed(&text, imu->gyro_x_dps, 3U);
+    telemetry_fixed(&text, imu->gyro_y_dps, 3U);
+    telemetry_fixed(&text, imu->gyro_z_dps, 3U);
+    telemetry_uint(&text, rate_controller_get_calibration_samples());
+    telemetry_fixed(&text, imu->temperature_c, 2U);
+    telemetry_char(&text, '\n');
+    if (text.valid) {
+        printf("%s", output);
+    }
+
 }

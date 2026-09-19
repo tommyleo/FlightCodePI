@@ -35,26 +35,43 @@ static void apply_sensor_mounting(float *x, float *y, float *z)
     *z = -*z;
 }
 
-static void rotate_vector(float *x, float *y, float *z)
+static float alignment[3][3];
+static float alignment_angles[3];
+static bool alignment_initialized;
+
+static void update_alignment(void)
 {
     const flight_settings_t *settings = flight_settings_get();
+    const float roll = settings->board_roll_deg;
+    const float pitch = settings->board_pitch_deg;
+    const float yaw = settings->board_yaw_deg;
+    if (alignment_initialized && alignment_angles[0] == roll &&
+        alignment_angles[1] == pitch && alignment_angles[2] == yaw) return;
     const float to_rad = FLIGHT_PI_F / 180.0f;
-    const float cr = cosf(settings->board_roll_deg * to_rad);
-    const float sr = sinf(settings->board_roll_deg * to_rad);
-    const float cp = cosf(settings->board_pitch_deg * to_rad);
-    const float sp = sinf(settings->board_pitch_deg * to_rad);
-    const float cy = cosf(settings->board_yaw_deg * to_rad);
-    const float sy = sinf(settings->board_yaw_deg * to_rad);
-    const float in_x = *x;
-    const float in_y = *y;
-    const float in_z = *z;
-    *x = cy * cp * in_x +
-         (cy * sp * sr - sy * cr) * in_y +
-         (cy * sp * cr + sy * sr) * in_z;
-    *y = sy * cp * in_x +
-         (sy * sp * sr + cy * cr) * in_y +
-         (sy * sp * cr - cy * sr) * in_z;
-    *z = -sp * in_x + cp * sr * in_y + cp * cr * in_z;
+    const float cr = cosf(roll * to_rad), sr = sinf(roll * to_rad);
+    const float cp = cosf(pitch * to_rad), sp = sinf(pitch * to_rad);
+    const float cy = cosf(yaw * to_rad), sy = sinf(yaw * to_rad);
+    alignment[0][0] = cy * cp;
+    alignment[0][1] = cy * sp * sr - sy * cr;
+    alignment[0][2] = cy * sp * cr + sy * sr;
+    alignment[1][0] = sy * cp;
+    alignment[1][1] = sy * sp * sr + cy * cr;
+    alignment[1][2] = sy * sp * cr - cy * sr;
+    alignment[2][0] = -sp;
+    alignment[2][1] = cp * sr;
+    alignment[2][2] = cp * cr;
+    alignment_angles[0] = roll;
+    alignment_angles[1] = pitch;
+    alignment_angles[2] = yaw;
+    alignment_initialized = true;
+}
+
+static void rotate_vector(float *x, float *y, float *z)
+{
+    const float in_x = *x, in_y = *y, in_z = *z;
+    *x = alignment[0][0] * in_x + alignment[0][1] * in_y + alignment[0][2] * in_z;
+    *y = alignment[1][0] * in_x + alignment[1][1] * in_y + alignment[1][2] * in_z;
+    *z = alignment[2][0] * in_x + alignment[2][1] * in_y + alignment[2][2] * in_z;
 }
 
 static void apply_board_alignment(imu_sample_t *sample)
@@ -147,6 +164,7 @@ bool imu_update(bool gyro_only)
         : mpu6500_read(&imu_device, &latest_sample);
 #endif
     if (updated) {
+        update_alignment();
         if (gyro_only) {
             apply_gyro_alignment(&latest_sample);
         } else {

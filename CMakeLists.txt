@@ -31,7 +31,7 @@ include(pico_sdk_import.cmake)
 
 project(FlightCodePI C CXX ASM)
 
-set(FLIGHTCODE_VERSION "1.1.0")
+set(FLIGHTCODE_VERSION "1.2.0")
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()

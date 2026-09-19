@@ -21,7 +21,6 @@ static float mean_motor(void)
 int main(void)
 {
     settings.motor_idle_percent=5.0f;
-    settings.throttle_rise_ms=400.0f; /* Legacy value must be ignored. */
     settings.gyro_lpf_hz=100.0f; settings.dterm_lpf_hz=60.0f;
     settings.roll_rate_dps=400.0f; settings.roll.kp=0.1f;
     imu.valid=true; imu.accel_z_g=1.0f;
@@ -29,8 +28,8 @@ int main(void)
     for(int i=0;i<8100;i++)tick(false,0,0);
     assert(rate_controller_is_calibrated());
     tick(true,80,0);
-    assert(fabsf(mean_motor()-(5.0f+2.5f*0.95f))<0.03f);
-    /* Attitude correction is immediate even with an unfinished ramp. */
+    assert(fabsf(mean_motor()-81.0f)<0.03f);
+    /* Attitude correction remains active after an immediate throttle step. */
     tick(true,80,10);
     assert(output.motor_percent[2]-output.motor_percent[0]>7.9f);
     tick(true,10,0);
@@ -38,12 +37,11 @@ int main(void)
     tick(false,80,0);
     assert(mean_motor()==0.0f);
     tick(true,80,0);
-    assert(mean_motor()<5.04f); /* no retained collective on re-arm */
+    assert(fabsf(mean_motor()-81.0f)<0.03f);
     rate_controller_reset(); /* main loop also uses this for failsafe */
     tick(true,80,0);
-    assert(mean_motor()<5.04f);
-    settings.throttle_rise_ms=0.0f; /* A second legacy value is also ignored. */
-    tick(true,80,0);
-    assert(mean_motor()<53.0f);
-    puts("Fixed controller ramp, PID authority and disarm tests passed");
+    assert(fabsf(mean_motor()-81.0f)<0.03f);
+    tick(true,100,0);
+    assert(fabsf(mean_motor()-100.0f)<0.03f);
+    puts("Direct throttle, PID authority and disarm tests passed");
 }
