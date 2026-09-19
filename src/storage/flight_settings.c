@@ -11,6 +11,7 @@
 
 #define SETTINGS_MAGIC 0x46465049u
 #define SETTINGS_VERSION 11u
+#define SETTINGS_LEGACY_VERSION_10 10u
 #define SETTINGS_LEGACY_VERSION_9 9u
 #define SETTINGS_LEGACY_VERSION_8 8u
 #define SETTINGS_LEGACY_VERSION_7 7u
@@ -41,6 +42,22 @@ typedef struct {
                               dynamic_d_boost_percent)];
     uint32_t checksum;
 } legacy_record_v8_t;
+
+typedef struct {
+    flight_settings_t settings;
+    float throttle_rise_ms;
+} legacy_settings_v10_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    legacy_settings_v10_t settings;
+    uint32_t checksum;
+} legacy_record_v10_t;
+
+_Static_assert(sizeof(legacy_settings_v10_t) ==
+                   sizeof(flight_settings_t) + sizeof(float),
+               "Flight settings v10 migration layout changed");
 
 typedef struct {
     uint32_t magic;
@@ -256,6 +273,20 @@ void flight_settings_init(void)
          stored->settings.main_loop_hz == 16000u)) {
         current_settings = stored->settings;
         settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v10_t *legacy_v10 =
+        (const legacy_record_v10_t *)flash;
+    if (legacy_v10->magic == SETTINGS_MAGIC &&
+        legacy_v10->version == SETTINGS_LEGACY_VERSION_10 &&
+        legacy_v10->checksum == hash_record(
+            legacy_v10, offsetof(legacy_record_v10_t, checksum)) &&
+        valid_settings(&legacy_v10->settings.settings) &&
+        (legacy_v10->settings.settings.main_loop_hz == 8000u ||
+         legacy_v10->settings.settings.main_loop_hz == 16000u)) {
+        current_settings = legacy_v10->settings.settings;
+        settings_saved = false;
         return;
     }
 
