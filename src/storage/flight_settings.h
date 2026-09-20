@@ -42,10 +42,13 @@ typedef struct {
     uint32_t main_loop_hz;
     float vbat_multiplier;
     float dynamic_d_boost_percent;
+    uint32_t receiver_protocol;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u
 #define RECEIVER_ORDER_AETR1234 1u
+#define RECEIVER_PROTOCOL_SBUS 0u
+#define RECEIVER_PROTOCOL_CRSF 1u
 
 void flight_settings_init(void);
 const flight_settings_t *flight_settings_get(void);

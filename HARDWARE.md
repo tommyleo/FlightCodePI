@@ -7,7 +7,7 @@ the USB connector at the top.
 
 | Function | Pico GPIO | Physical pin | Direction | Notes |
 |---|---:|---:|---|---|
-| SBUS receiver signal | GP0 | 1 | Input | Inverted SBUS, 100 kbit/s |
+| SBUS / ELRS receiver signal | GP0 | 1 | Input | Inverted SBUS at 100 kbit/s or non-inverted CRSF at 420 kbit/s |
 | Motor 1 ESC signal | GP1 | 2 | Output | Rear right, DSHOT |
 | Motor 2 ESC signal | GP2 | 4 | Output | Front right, DSHOT |
 | Motor 3 ESC signal | GP3 | 5 | Output | Rear left, DSHOT |

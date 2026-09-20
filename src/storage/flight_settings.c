@@ -10,7 +10,8 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 11u
+#define SETTINGS_VERSION 12u
+#define SETTINGS_LEGACY_VERSION_11 11u
 #define SETTINGS_LEGACY_VERSION_10 10u
 #define SETTINGS_LEGACY_VERSION_9 9u
 #define SETTINGS_LEGACY_VERSION_8 8u
@@ -44,7 +45,14 @@ typedef struct {
 } legacy_record_v8_t;
 
 typedef struct {
-    flight_settings_t settings;
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, receiver_protocol)];
+    uint32_t checksum;
+} legacy_record_v11_t;
+
+typedef struct {
+    uint8_t settings[offsetof(flight_settings_t, receiver_protocol)];
     float throttle_rise_ms;
 } legacy_settings_v10_t;
 
@@ -55,14 +63,10 @@ typedef struct {
     uint32_t checksum;
 } legacy_record_v10_t;
 
-_Static_assert(sizeof(legacy_settings_v10_t) ==
-                   sizeof(flight_settings_t) + sizeof(float),
-               "Flight settings v10 migration layout changed");
-
 typedef struct {
     uint32_t magic;
     uint32_t version;
-    uint8_t settings[sizeof(flight_settings_t)];
+    uint8_t settings[offsetof(flight_settings_t, receiver_protocol)];
     uint32_t checksum;
 } legacy_record_v9_t;
 
@@ -217,7 +221,8 @@ static bool valid_settings(const flight_settings_t *settings)
            settings->arm_min_us < settings->arm_max_us &&
            settings->beep_min_us >= 900u && settings->beep_max_us <= 2100u &&
            settings->beep_min_us < settings->beep_max_us &&
-           finite_range(settings->vbat_multiplier, 0.5f, 1.5f);
+           finite_range(settings->vbat_multiplier, 0.5f, 1.5f) &&
+           settings->receiver_protocol <= RECEIVER_PROTOCOL_CRSF;
 
 }
 
@@ -254,6 +259,7 @@ void flight_settings_reset_defaults(void)
         .beep_max_us = 2100u,
         .main_loop_hz = 16000u,
         .vbat_multiplier = 1.0f,
+        .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -276,16 +282,28 @@ void flight_settings_init(void)
         return;
     }
 
+    const legacy_record_v11_t *legacy_v11 =
+        (const legacy_record_v11_t *)flash;
+    if (legacy_v11->magic == SETTINGS_MAGIC &&
+        legacy_v11->version == SETTINGS_LEGACY_VERSION_11 &&
+        legacy_v11->checksum == hash_record(
+            legacy_v11, offsetof(legacy_record_v11_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v11->settings,
+               sizeof(legacy_v11->settings));
+        settings_saved = false;
+        return;
+    }
+
     const legacy_record_v10_t *legacy_v10 =
         (const legacy_record_v10_t *)flash;
     if (legacy_v10->magic == SETTINGS_MAGIC &&
         legacy_v10->version == SETTINGS_LEGACY_VERSION_10 &&
         legacy_v10->checksum == hash_record(
-            legacy_v10, offsetof(legacy_record_v10_t, checksum)) &&
-        valid_settings(&legacy_v10->settings.settings) &&
-        (legacy_v10->settings.settings.main_loop_hz == 8000u ||
-         legacy_v10->settings.settings.main_loop_hz == 16000u)) {
-        current_settings = legacy_v10->settings.settings;
+            legacy_v10, offsetof(legacy_record_v10_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v10->settings.settings,
+               sizeof(legacy_v10->settings.settings));
         settings_saved = false;
         return;
     }

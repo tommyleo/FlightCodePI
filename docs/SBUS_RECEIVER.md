@@ -1,14 +1,14 @@
-# SBUS receiver wiring
+# SBUS and ELRS receiver wiring
 
-FlightCodePI reads a standard inverted SBUS signal at 100 kbit/s using PIO0.
-The firmware decodes 16 receiver channels and rejects frames marked as lost or
-failsafe.
+FlightCodePI reads standard inverted SBUS at 100 kbit/s or non-inverted
+ELRS/CRSF at 420 kbit/s using PIO0. The firmware decodes 16 receiver channels
+and rejects invalid or failsafe data.
 
 ## Connections
 
 | Receiver connection | Raspberry Pi Pico 2 / Pico 2 W |
 |---|---|
-| SBUS signal | GP0, physical pin 1 |
+| SBUS or ELRS/CRSF signal | GP0, physical pin 1 |
 | Ground | GND, physical pin 3 recommended |
 | Receiver power | Supply required by the receiver; do not assume 3.3 V |
 
@@ -22,10 +22,10 @@ RP2350 GPIO inputs are 3.3 V logic and are not 5 V tolerant. Before connecting
 the SBUS signal, verify its voltage with the receiver documentation or a meter.
 Use a suitable level shifter if the receiver output can exceed 3.3 V.
 
-Connect the receiver's standard **inverted SBUS** output. The current firmware
-performs the SBUS inversion in software. An uninverted SBUS pad will therefore
-not decode correctly unless an external inverter is added or the firmware is
-changed.
+For SBUS, connect the receiver's standard **inverted SBUS** output; inversion
+is performed in software. For ELRS, connect the receiver's non-inverted CRSF
+TX output. The firmware currently receives RC channels only and does not send
+CRSF telemetry back to the receiver.
 
 ## Channel assignment
 

@@ -57,6 +57,10 @@ pico_generate_pio_header(FlightCodePI
 )
 
 pico_generate_pio_header(FlightCodePI
+        ${CMAKE_CURRENT_LIST_DIR}/pio/crsf_rx.pio
+)
+
+pico_generate_pio_header(FlightCodePI
         ${CMAKE_CURRENT_LIST_DIR}/pio/dshot.pio
 )
 

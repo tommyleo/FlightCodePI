@@ -483,7 +483,8 @@ int main(void)
     esc_controller_startup_sequence(loop.escs, ESC_COUNT);
 
     config_protocol_init();
-    sbus_receiver_init(SBUS_INPUT_GPIO);
+    sbus_receiver_init(SBUS_INPUT_GPIO,
+                       flight_settings_get()->receiver_protocol);
     gpio_init(BUZZER_GPIO);
     gpio_set_dir(BUZZER_GPIO, GPIO_OUT);
     gpio_put(BUZZER_GPIO, false);

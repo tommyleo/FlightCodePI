@@ -139,7 +139,9 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *settings = flight_settings_get();
-    printf("@CFG RECEIVER_CONFIG SBUS %s %lu %lu %lu %lu %lu %lu %u\n",
+    printf("@CFG RECEIVER_CONFIG %s PIO0 %s %lu %lu %lu %lu %lu %lu %u\n",
+           settings->receiver_protocol == RECEIVER_PROTOCOL_CRSF
+               ? "ELRS" : "SBUS",
            settings->receiver_channel_order == RECEIVER_ORDER_AETR1234
                ? "AETR1234" : "TAER1234",
            (unsigned long)(settings->arm_channel + 1u),
@@ -198,7 +200,8 @@ static void process_command(const char *command,
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
                "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
                "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE VBAT_CALIBRATION\n");
-        printf("@CFG RECEIVER_PROTOCOLS SBUS\n");
+        printf("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
+        printf("@CFG SERIAL_PORTS PIO0\n");
         printf("@CFG IMU %s %u\n",
                imu_get_name(),
                imu_is_available() ? 1u : 0u);
@@ -276,7 +279,7 @@ static void process_command(const char *command,
             printf("@CFG FLIGHT_LOG_METADATA_UNAVAILABLE\n");
             return;
         }
-        printf("@CFG FLIGHT_LOG_METADATA_CORE %lu %lu %lu %lu %lu %lu %lu %u %.2f\n",
+        printf("@CFG FLIGHT_LOG_METADATA_CORE %lu %lu %lu %lu %lu %lu %lu %u %.2f %u %u\n",
                (unsigned long)metadata.version,
                (unsigned long)metadata.main_loop_hz,
                (unsigned long)metadata.gyro_rate_hz,
@@ -285,7 +288,9 @@ static void process_command(const char *command,
                (unsigned long)metadata.motor_direction_reversed,
                (unsigned long)metadata.receiver_protocol,
                metadata.initial_battery_cells,
-               metadata.initial_battery_centivolts / 100.0f);
+               metadata.initial_battery_centivolts / 100.0f,
+               FLIGHT_LOG_FORMAT_VERSION_MAJOR,
+               FLIGHT_LOG_FORMAT_VERSION_MINOR);
         printf("@CFG FLIGHT_LOG_METADATA_PIDS %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n",
                metadata.pids[0], metadata.pids[1], metadata.pids[2],
                metadata.pids[3], metadata.pids[4], metadata.pids[5],
@@ -426,17 +431,23 @@ static void process_command(const char *command,
         send_vbat_multiplier();
         return;
     }
-    char receiver_protocol[8], receiver_order[16];
+    char receiver_protocol[8], receiver_port[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
     bool receiver_config_match = false;
-    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %15s %u %u %u %u %u %u",
-               receiver_protocol, receiver_order, &arm_channel, &arm_min,
-               &arm_max, &beep_channel, &beep_min, &beep_max) == 8) {
-        if (strcmp(receiver_protocol, "SBUS") != 0) {
+    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
+               receiver_protocol, receiver_port, receiver_order, &arm_channel,
+               &arm_min, &arm_max, &beep_channel, &beep_min,
+               &beep_max) == 9) {
+        if ((strcmp(receiver_protocol, "SBUS") != 0 &&
+             strcmp(receiver_protocol, "ELRS") != 0) ||
+            strcmp(receiver_port, "PIO0") != 0) {
             printf("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
             return;
         }
+        settings.receiver_protocol = strcmp(receiver_protocol, "ELRS") == 0
+                                         ? RECEIVER_PROTOCOL_CRSF
+                                         : RECEIVER_PROTOCOL_SBUS;
         receiver_config_match = true;
     } else if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
                       receiver_order, &arm_channel, &arm_min, &arm_max,
@@ -467,9 +478,11 @@ static void process_command(const char *command,
         settings.beep_channel = beep_channel - 1u;
         settings.beep_min_us = beep_min;
         settings.beep_max_us = beep_max;
-        printf(flight_settings_set(&settings)
-                   ? "@CFG OK SET_RECEIVER_CONFIG\n"
-                   : "@CFG ERROR INVALID_RECEIVER_CONFIG\n");
+        const bool applied = flight_settings_set(&settings) &&
+                             sbus_receiver_set_protocol(
+                                 settings.receiver_protocol);
+        printf(applied ? "@CFG OK SET_RECEIVER_CONFIG\n"
+                       : "@CFG ERROR INVALID_RECEIVER_CONFIG\n");
         send_receiver_config();
         return;
     }

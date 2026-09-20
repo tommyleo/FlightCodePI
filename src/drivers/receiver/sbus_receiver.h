@@ -24,7 +24,8 @@ typedef struct {
     bool idle_level;
 } sbus_diagnostics_t;
 
-void sbus_receiver_init(unsigned int gpio);
+void sbus_receiver_init(unsigned int gpio, uint32_t protocol);
+bool sbus_receiver_set_protocol(uint32_t protocol);
 bool sbus_receiver_read(sbus_frame_t *frame);
 void sbus_receiver_get_diagnostics(sbus_diagnostics_t *diagnostics);
 

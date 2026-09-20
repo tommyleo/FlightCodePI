@@ -11,7 +11,7 @@
 #include "imu.h"
 
 #define LOG_FLASH_MAGIC 0x50494c47u
-#define LOG_FLASH_VERSION 7u
+#define LOG_FLASH_VERSION 8u
 #define LOG_FLASH_SECTORS 25u
 #define LOG_FLASH_SIZE (LOG_FLASH_SECTORS * FLASH_SECTOR_SIZE)
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
@@ -187,6 +187,7 @@ void flight_log_start(void)
     flight_metadata.alignment[0]=s->board_roll_deg; flight_metadata.alignment[1]=s->board_pitch_deg; flight_metadata.alignment[2]=s->board_yaw_deg;
     flight_metadata.motor_idle_percent=s->motor_idle_percent; flight_metadata.motor_protocol=s->dshot_rate_kbps;
     flight_metadata.motor_direction_reversed=s->motor_direction_reversed;
+    flight_metadata.receiver_protocol=s->receiver_protocol;
     flight_metadata.initial_battery_centivolts=battery_centivolts; flight_metadata.initial_battery_cells=battery_cells;
     flight_metadata.reserved=(uint8_t)lroundf(s->dynamic_d_boost_percent*2.0f);
     recording = true;
