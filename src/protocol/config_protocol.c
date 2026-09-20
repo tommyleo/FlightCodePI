@@ -434,11 +434,12 @@ static void process_command(const char *command,
     char receiver_protocol[8], receiver_port[8], receiver_order[16];
     unsigned int arm_channel, arm_min, arm_max;
     unsigned int beep_channel, beep_min, beep_max;
-    bool receiver_config_match = false;
-    if (sscanf(command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
-               receiver_protocol, receiver_port, receiver_order, &arm_channel,
-               &arm_min, &arm_max, &beep_channel, &beep_min,
-               &beep_max) == 9) {
+    const int receiver_with_port = sscanf(
+        command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
+        receiver_protocol, receiver_port, receiver_order, &arm_channel,
+        &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max);
+    if (receiver_with_port == 9 &&
+        strncmp(receiver_port, "PIO", 3u) == 0) {
         if ((strcmp(receiver_protocol, "SBUS") != 0 &&
              strcmp(receiver_protocol, "ELRS") != 0) ||
             strcmp(receiver_port, "PIO0") != 0) {
@@ -448,13 +449,6 @@ static void process_command(const char *command,
         settings.receiver_protocol = strcmp(receiver_protocol, "ELRS") == 0
                                          ? RECEIVER_PROTOCOL_CRSF
                                          : RECEIVER_PROTOCOL_SBUS;
-        receiver_config_match = true;
-    } else if (sscanf(command, "SET_RECEIVER_CONFIG %15s %u %u %u %u %u %u",
-                      receiver_order, &arm_channel, &arm_min, &arm_max,
-                      &beep_channel, &beep_min, &beep_max) == 7) {
-        receiver_config_match = true;
-    }
-    if (receiver_config_match) {
         if (strcmp(receiver_order, "TAER1234") == 0) {
             settings.receiver_channel_order = RECEIVER_ORDER_TAER1234;
         } else if (strcmp(receiver_order, "AETR1234") == 0) {
