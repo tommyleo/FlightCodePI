@@ -10,7 +10,8 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 12u
+#define SETTINGS_VERSION 13u
+#define SETTINGS_LEGACY_VERSION_12 12u
 #define SETTINGS_LEGACY_VERSION_11 11u
 #define SETTINGS_LEGACY_VERSION_10 10u
 #define SETTINGS_LEGACY_VERSION_9 9u
@@ -50,6 +51,13 @@ typedef struct {
     uint8_t settings[offsetof(flight_settings_t, receiver_protocol)];
     uint32_t checksum;
 } legacy_record_v11_t;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, gyro_rate_hz)];
+    uint32_t checksum;
+} legacy_record_v12_t;
 
 typedef struct {
     uint8_t settings[offsetof(flight_settings_t, receiver_protocol)];
@@ -222,7 +230,10 @@ static bool valid_settings(const flight_settings_t *settings)
            settings->beep_min_us >= 900u && settings->beep_max_us <= 2100u &&
            settings->beep_min_us < settings->beep_max_us &&
            finite_range(settings->vbat_multiplier, 0.5f, 1.5f) &&
-           settings->receiver_protocol <= RECEIVER_PROTOCOL_CRSF;
+           settings->receiver_protocol <= RECEIVER_PROTOCOL_CRSF &&
+           (settings->gyro_rate_hz == 8000u ||
+            settings->gyro_rate_hz == 16000u) &&
+           settings->gyro_rate_hz <= settings->main_loop_hz;
 
 }
 
@@ -258,6 +269,7 @@ void flight_settings_reset_defaults(void)
         .beep_min_us = 1950u,
         .beep_max_us = 2100u,
         .main_loop_hz = 16000u,
+        .gyro_rate_hz = 16000u,
         .vbat_multiplier = 1.0f,
         .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
     };
@@ -279,6 +291,19 @@ void flight_settings_init(void)
          stored->settings.main_loop_hz == 16000u)) {
         current_settings = stored->settings;
         settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v12_t *legacy_v12 =
+        (const legacy_record_v12_t *)flash;
+    if (legacy_v12->magic == SETTINGS_MAGIC &&
+        legacy_v12->version == SETTINGS_LEGACY_VERSION_12 &&
+        legacy_v12->checksum == hash_record(
+            legacy_v12, offsetof(legacy_record_v12_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v12->settings,
+               sizeof(legacy_v12->settings));
+        settings_saved = false;
         return;
     }
 

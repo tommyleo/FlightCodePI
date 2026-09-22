@@ -354,7 +354,8 @@ static void main_loop_state_init(main_loop_state_t *state)
     state->esc_task = (loop_task_t){
         0u, state->loop_hz < 16000u ? state->loop_hz : 16000u};
     state->imu_task = (loop_task_t){
-        0u, imu_get_update_rate_hz(false, state->loop_hz)};
+        0u, imu_get_update_rate_hz(
+            false, flight_settings_get()->gyro_rate_hz)};
     state->loop_measurement_start_us = time_us_32();
     state->loop_frequency_hz = (float)state->loop_hz;
     state->previous_loop_start_us = time_us_32();
@@ -413,7 +414,8 @@ static void main_loop_step(main_loop_state_t *state)
         flight_log_set_battery_voltage(battery_voltage_get());
     }
     state->imu_task.rate_hz =
-        imu_get_update_rate_hz(escs_armed, state->loop_hz);
+        imu_get_update_rate_hz(
+            escs_armed, flight_settings_get()->gyro_rate_hz);
     const bool imu_due = task_due(&state->imu_task, state->loop_hz);
     if (imu_due) {
         if (imu_update(escs_armed)) {
@@ -488,7 +490,7 @@ int main(void)
     gpio_init(BUZZER_GPIO);
     gpio_set_dir(BUZZER_GPIO, GPIO_OUT);
     gpio_put(BUZZER_GPIO, false);
-    imu_init(flight_settings_get()->main_loop_hz);
+    imu_init(flight_settings_get()->gyro_rate_hz);
     rate_controller_init();
     flight_log_init();
     arm_switch_was_low = false;

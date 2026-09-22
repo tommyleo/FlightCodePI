@@ -170,8 +170,7 @@ void flight_log_start(void)
     memset(&flight_metadata, 0, sizeof(flight_metadata));
     flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
     flight_metadata.main_loop_hz = s->main_loop_hz;
-    flight_metadata.gyro_rate_hz =
-        imu_get_update_rate_hz(true, s->main_loop_hz);
+    flight_metadata.gyro_rate_hz = imu_get_gyro_rate_hz();
     flight_metadata.log_rate_hz = FLIGHT_LOG_RATE_HZ;
     const pid_axis_t gains[3] = {s->roll, s->pitch, s->yaw};
     for (uint8_t i = 0u; i < 3u; ++i) {

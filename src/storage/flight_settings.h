@@ -43,6 +43,7 @@ typedef struct {
     float vbat_multiplier;
     float dynamic_d_boost_percent;
     uint32_t receiver_protocol;
+    uint32_t gyro_rate_hz;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u

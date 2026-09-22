@@ -57,9 +57,11 @@ static void send_motor_protocol(void)
 
 static void send_main_loop(void)
 {
-    printf("@CFG MAIN_LOOP %lu %u\n",
+    printf("@CFG MAIN_LOOP %lu %lu %u\n",
            (unsigned long)flight_settings_get()->main_loop_hz,
+           (unsigned long)flight_settings_get()->gyro_rate_hz,
            flight_settings_are_saved() ? 1u : 0u);
+    printf("@CFG GYRO_RATES 8000 16000\n");
     printf("@CFG GYRO_RATE %lu\n",
            (unsigned long)imu_get_gyro_rate_hz());
 }
@@ -532,10 +534,12 @@ static void process_command(const char *command,
         return;
     }
 
-    unsigned int main_loop_hz;
-    if (sscanf(command, "SET_MAIN_LOOP %u", &main_loop_hz) == 1) {
+    unsigned int main_loop_hz, gyro_rate_hz;
+    if (sscanf(command, "SET_MAIN_LOOP %u %u", &main_loop_hz,
+               &gyro_rate_hz) == 2) {
         settings = *flight_settings_get();
         settings.main_loop_hz = main_loop_hz;
+        settings.gyro_rate_hz = gyro_rate_hz;
         if (armed) {
             printf("@CFG ERROR ARMED\n");
         } else if (flight_settings_set(&settings)) {
