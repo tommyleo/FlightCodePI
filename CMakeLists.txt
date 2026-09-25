@@ -46,6 +46,7 @@ add_executable(FlightCodePI
         src/drivers/imu/mpu6050.c
         src/drivers/imu/mpu6500.c
         src/drivers/motors/esc_controller.c
+        src/drivers/osd/msp_displayport.c
         src/drivers/receiver/sbus_receiver.c
         src/protocol/config_protocol.c
         src/storage/flight_log.c
@@ -83,6 +84,7 @@ target_link_libraries(FlightCodePI
         hardware_i2c
         hardware_pio
         hardware_spi
+        hardware_uart
         hardware_watchdog
 )
 
@@ -99,6 +101,7 @@ target_include_directories(FlightCodePI PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/src/drivers/battery
         ${CMAKE_CURRENT_LIST_DIR}/src/drivers/imu
         ${CMAKE_CURRENT_LIST_DIR}/src/drivers/motors
+        ${CMAKE_CURRENT_LIST_DIR}/src/drivers/osd
         ${CMAKE_CURRENT_LIST_DIR}/src/drivers/receiver
         ${CMAKE_CURRENT_LIST_DIR}/src/protocol
         ${CMAKE_CURRENT_LIST_DIR}/src/storage

@@ -8,6 +8,7 @@ the USB connector at the top.
 | Function | Pico GPIO | Physical pin | Direction | Notes |
 |---|---:|---:|---|---|
 | SBUS / ELRS receiver signal | GP0 | 1 | Input | Inverted SBUS at 100 kbit/s or non-inverted CRSF at 420 kbit/s |
+| Digital OSD / MSP DisplayPort TX | GP4 | 6 | Output | UART1 TX, 115200 baud, connect to VTX RX |
 | Motor 1 ESC signal | GP1 | 2 | Output | Rear right, DSHOT |
 | Motor 2 ESC signal | GP2 | 4 | Output | Front right, DSHOT |
 | Motor 3 ESC signal | GP3 | 5 | Output | Rear left, DSHOT |
@@ -25,6 +26,15 @@ Detailed guides:
 
 - [SBUS receiver wiring](docs/SBUS_RECEIVER.md)
 - [Motors and ESC wiring](docs/MOTORS_AND_ESC.md)
+
+## Digital OSD
+
+Connect **GP4 (UART1 TX, physical pin 6)** to the digital VTX's MSP RX input
+and connect VTX and Pico grounds. In FlightCode Configurator select
+**HDZero V3 · MSP + DisplayPort** on **UART1**, then enable and arrange the OSD
+items. GP0 remains dedicated to the SBUS/ELRS receiver; no inversion is
+applied to GP4. DisplayPort sends the overlay only: it does not configure the
+VTX frequency or power. Remove propellers before checking the wiring.
 
 ## MPU6500 / MPU9250 / MPU9255 (SPI0)
 
@@ -90,6 +100,6 @@ for the ESC signal returns.
 
 ## Currently unused GPIOs
 
-GP4, GP5, GP8-GP15, GP20-GP22, GP27 and GP28 are not assigned by the current
+GP5, GP8-GP15, GP20-GP22, GP27 and GP28 are not assigned by the current
 firmware. Do not connect new peripherals to them without also checking future
 firmware changes and the Pico board documentation.

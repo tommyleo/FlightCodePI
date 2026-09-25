@@ -10,7 +10,8 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 13u
+#define SETTINGS_VERSION 14u
+#define SETTINGS_LEGACY_VERSION_13 13u
 #define SETTINGS_LEGACY_VERSION_12 12u
 #define SETTINGS_LEGACY_VERSION_11 11u
 #define SETTINGS_LEGACY_VERSION_10 10u
@@ -22,6 +23,13 @@
 #define SETTINGS_LEGACY_VERSION 3u
 #define SETTINGS_LEGACY_VERSION_4 4u
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint8_t settings[offsetof(flight_settings_t, vtx_protocol)];
+    uint32_t checksum;
+} legacy_record_v13_t;
 
 typedef struct {
     uint32_t magic;
@@ -193,6 +201,8 @@ static bool valid_pid(const pid_axis_t *pid)
 
 static bool valid_settings(const flight_settings_t *settings)
 {
+    for (uint8_t i = 0u; i < OSD_ELEMENT_COUNT; ++i)
+        if (settings->osd_element_positions[i] >= 480u) return false;
     if (settings == NULL) {
         return false;
     }
@@ -233,7 +243,19 @@ static bool valid_settings(const flight_settings_t *settings)
            settings->receiver_protocol <= RECEIVER_PROTOCOL_CRSF &&
            (settings->gyro_rate_hz == 8000u ||
             settings->gyro_rate_hz == 16000u) &&
-           settings->gyro_rate_hz <= settings->main_loop_hz;
+           settings->gyro_rate_hz <= settings->main_loop_hz &&
+           (settings->vtx_protocol == VTX_PROTOCOL_OFF ||
+            settings->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP) &&
+           settings->vtx_uart == 1u &&
+           settings->vtx_region <= 1u && settings->vtx_band < 6u &&
+           settings->vtx_channel < 8u && settings->vtx_power_mw >= 1u &&
+           settings->vtx_power_mw <= 2000u &&
+           settings->osd_enabled <= 1u &&
+           settings->osd_element_enabled_mask < (1u << OSD_ELEMENT_COUNT) &&
+           settings->vtx_osd_enabled <= 1u &&
+           settings->vtx_osd_position < 480u &&
+           memchr(settings->osd_pilot_name, '\0',
+                  sizeof(settings->osd_pilot_name)) != NULL;
 
 }
 
@@ -272,6 +294,17 @@ void flight_settings_reset_defaults(void)
         .gyro_rate_hz = 16000u,
         .vbat_multiplier = 1.0f,
         .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
+        .vtx_protocol = VTX_PROTOCOL_OFF,
+        .vtx_uart = 1u,
+        .vtx_region = 0u,
+        .vtx_band = 4u,
+        .vtx_channel = 0u,
+        .vtx_power_mw = 25u,
+        .osd_enabled = 1u,
+        .osd_element_enabled_mask = 1u,
+        .osd_element_positions = {31u, 61u, 51u, 340u, 369u},
+        .osd_pilot_name = "PILOT",
+        .vtx_osd_position = 55u,
     };
     flight_settings_reset_tuning_defaults(&current_settings);
     settings_saved = false;
@@ -291,6 +324,19 @@ void flight_settings_init(void)
          stored->settings.main_loop_hz == 16000u)) {
         current_settings = stored->settings;
         settings_saved = true;
+        return;
+    }
+
+    const legacy_record_v13_t *legacy_v13 =
+        (const legacy_record_v13_t *)flash;
+    if (legacy_v13->magic == SETTINGS_MAGIC &&
+        legacy_v13->version == SETTINGS_LEGACY_VERSION_13 &&
+        legacy_v13->checksum == hash_record(
+            legacy_v13, offsetof(legacy_record_v13_t, checksum))) {
+        flight_settings_reset_defaults();
+        memcpy(&current_settings, legacy_v13->settings,
+               sizeof(legacy_v13->settings));
+        settings_saved = false;
         return;
     }
 

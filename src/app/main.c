@@ -13,6 +13,7 @@
 #include "imu.h"
 #include "rate_controller.h"
 #include "sbus_receiver.h"
+#include "msp_displayport.h"
 
 #if defined(CYW43_WL_GPIO_LED_PIN)
 #include "pico/cyw43_arch.h"
@@ -351,6 +352,7 @@ static void main_loop_state_init(main_loop_state_t *state)
     state->next_loop = get_absolute_time();
     state->service_task = (loop_task_t){0u, 1000u};
     state->telemetry_task = (loop_task_t){0u, 25u};
+    state->osd_task = (loop_task_t){0u, 10u};
     state->esc_task = (loop_task_t){
         0u, state->loop_hz < 16000u ? state->loop_hz : 16000u};
     state->imu_task = (loop_task_t){
@@ -413,6 +415,10 @@ static void main_loop_step(main_loop_state_t *state)
         battery_voltage_update();
         flight_log_set_battery_voltage(battery_voltage_get());
     }
+    if (task_due(&state->osd_task, state->loop_hz))
+        msp_displayport_update(battery_voltage_get(), escs_armed,
+                               loop_start_us);
+    msp_displayport_process();
     state->imu_task.rate_hz =
         imu_get_update_rate_hz(
             escs_armed, flight_settings_get()->gyro_rate_hz);
@@ -474,6 +480,7 @@ int main(void)
     stdio_init_all();
     status_led_init();
     flight_settings_init();
+    msp_displayport_init();
     battery_voltage_init();
     esc_controller_set_dshot_rate(
         flight_settings_get()->dshot_rate_kbps);

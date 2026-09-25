@@ -44,12 +44,28 @@ typedef struct {
     float dynamic_d_boost_percent;
     uint32_t receiver_protocol;
     uint32_t gyro_rate_hz;
+    uint32_t vtx_protocol;
+    uint32_t vtx_uart;
+    uint32_t vtx_region;
+    uint32_t vtx_band;
+    uint32_t vtx_channel;
+    uint32_t vtx_power_mw;
+    uint32_t osd_enabled;
+    uint32_t osd_element_enabled_mask;
+    uint32_t osd_element_positions[5];
+    char osd_pilot_name[13];
+    uint32_t vtx_osd_enabled;
+    uint32_t vtx_osd_position;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u
 #define RECEIVER_ORDER_AETR1234 1u
 #define RECEIVER_PROTOCOL_SBUS 0u
 #define RECEIVER_PROTOCOL_CRSF 1u
+#define VTX_PROTOCOL_OFF 0u
+#define VTX_PROTOCOL_HDZERO_MSP 3u
+#define OSD_ELEMENT_COUNT 5u
+#define OSD_PILOT_NAME_LENGTH 12u
 
 void flight_settings_init(void);
 const flight_settings_t *flight_settings_get(void);

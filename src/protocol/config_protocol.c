@@ -8,6 +8,7 @@
 #include "esc_controller.h"
 #include "flight_log.h"
 #include "flight_settings.h"
+#include "msp_displayport.h"
 #include "pico/bootrom.h"
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
@@ -155,6 +156,45 @@ static void send_receiver_config(void)
            flight_settings_are_saved() ? 1u : 0u);
 }
 
+static void send_vtx_config(void)
+{
+    const flight_settings_t *s = flight_settings_get();
+    static const char bands[] = "ABEFRL";
+    printf("@CFG VTX_CONFIG %s UART1 %s %c %lu %lu %u\n",
+           s->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP ? "HDZERO_MSP" : "OFF",
+           s->vtx_region ? "US" : "EU", bands[s->vtx_band],
+           (unsigned long)(s->vtx_channel + 1u),
+           (unsigned long)s->vtx_power_mw, flight_settings_are_saved() ? 1u : 0u);
+    printf("@CFG VTX_STATUS %s\n", msp_displayport_status_name());
+}
+
+static void send_osd_status(void)
+{
+    printf("@CFG OSD_STATUS %u %u DIGITAL HD MSP_DISPLAYPORT 00 0 %u\n",
+           msp_displayport_is_available() ? 1u : 0u,
+           msp_displayport_is_available() && flight_settings_get()->osd_enabled ? 1u : 0u,
+           flight_settings_are_saved() ? 1u : 0u);
+}
+
+static void send_osd_layout(void)
+{
+    const flight_settings_t *s = flight_settings_get();
+    char pilot[OSD_PILOT_NAME_LENGTH + 1u];
+    (void)snprintf(pilot, sizeof(pilot), "%s", s->osd_pilot_name);
+    for (size_t i = 0u; pilot[i]; ++i) if (pilot[i] == ' ') pilot[i] = '_';
+    printf("@CFG OSD_LAYOUT %lu %lu %lu %lu %lu %lu %lu %lu %s %u\n",
+           (unsigned long)(s->osd_element_enabled_mask |
+                           (s->vtx_osd_enabled << OSD_ELEMENT_COUNT)),
+           (unsigned long)s->osd_element_positions[0],
+           (unsigned long)s->osd_element_positions[1],
+           (unsigned long)s->osd_element_positions[2],
+           (unsigned long)s->osd_element_positions[3],
+           (unsigned long)s->osd_element_positions[4],
+           (unsigned long)s->vtx_osd_position,
+           (unsigned long)s->vtx_osd_position,
+           pilot[0] ? pilot : "-", flight_settings_are_saved() ? 1u : 0u);
+}
+
 static void send_all_settings(void)
 {
     send_pids();
@@ -169,6 +209,9 @@ static void send_all_settings(void)
     send_receiver_config();
     send_main_loop();
     send_vbat_multiplier();
+    send_vtx_config();
+    send_osd_status();
+    send_osd_layout();
 }
 
 static void send_flight_log_info(const sbus_frame_t *receiver)
@@ -201,9 +244,10 @@ static void process_command(const char *command,
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
                "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
-               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE VBAT_CALIBRATION\n");
+               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE VBAT_CALIBRATION "
+               "VTX_CONFIG OSD OSD_LAYOUT\n");
         printf("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
-        printf("@CFG SERIAL_PORTS PIO0\n");
+        printf("@CFG SERIAL_PORTS PIO0 UART1\n");
         printf("@CFG IMU %s %u\n",
                imu_get_name(),
                imu_is_available() ? 1u : 0u);
@@ -270,6 +314,12 @@ static void process_command(const char *command,
     if (strcmp(command, "GET_RECEIVER_CONFIG") == 0) {
         send_receiver_config();
         return;
+    }
+    if (strcmp(command, "GET_VTX_CONFIG") == 0) {
+        send_vtx_config(); return;
+    }
+    if (strcmp(command, "GET_OSD_LAYOUT") == 0) {
+        send_osd_status(); send_osd_layout(); return;
     }
     if (strcmp(command, "GET_FLIGHT_LOG_INFO") == 0) {
         send_flight_log_info(receiver);
@@ -425,6 +475,65 @@ static void process_command(const char *command,
     }
 
     flight_settings_t settings = *flight_settings_get();
+    unsigned int osd_enabled;
+    if (sscanf(command, "SET_OSD_ENABLED %u", &osd_enabled) == 1) {
+        settings.osd_enabled = osd_enabled;
+        printf(flight_settings_set(&settings) ? "@CFG OK SET_OSD_ENABLED\n" :
+               "@CFG ERROR INVALID_OSD_CONFIG\n");
+        send_osd_status();
+        return;
+    }
+    unsigned int mask, positions[7];
+    char pilot[OSD_PILOT_NAME_LENGTH + 1u];
+    if (sscanf(command, "SET_OSD_LAYOUT %u %u %u %u %u %u %u %u %12s",
+               &mask, &positions[0], &positions[1], &positions[2],
+               &positions[3], &positions[4], &positions[5], &positions[6],
+               pilot) == 9) {
+        settings.osd_element_enabled_mask = mask & ((1u << OSD_ELEMENT_COUNT) - 1u);
+        settings.vtx_osd_enabled = (mask >> OSD_ELEMENT_COUNT) & 1u;
+        for (uint8_t i = 0u; i < OSD_ELEMENT_COUNT; ++i)
+            settings.osd_element_positions[i] = positions[i];
+        settings.vtx_osd_position = positions[5];
+        if (strcmp(pilot, "-") == 0) pilot[0] = '\0';
+        for (size_t i = 0u; pilot[i]; ++i) if (pilot[i] == '_') pilot[i] = ' ';
+        (void)snprintf(settings.osd_pilot_name,
+                       sizeof(settings.osd_pilot_name), "%s", pilot);
+        printf(flight_settings_set(&settings) ? "@CFG OK SET_OSD_LAYOUT\n" :
+               "@CFG ERROR INVALID_OSD_LAYOUT\n");
+        send_osd_layout();
+        return;
+    }
+    char protocol[16], port[8], region[4], band;
+    unsigned int channel, power;
+    if (sscanf(command, "SET_VTX_CONFIG %15s %7s %3s %c %u %u",
+               protocol, port, region, &band, &channel, &power) == 6) {
+        if (strcmp(protocol, "HDZERO_MSP") == 0)
+            settings.vtx_protocol = VTX_PROTOCOL_HDZERO_MSP;
+        else if (strcmp(protocol, "OFF") == 0)
+            settings.vtx_protocol = VTX_PROTOCOL_OFF;
+        else { printf("@CFG ERROR INVALID_VTX_PROTOCOL\n"); return; }
+        if (strcmp(port, "UART1") != 0) {
+            printf("@CFG ERROR INVALID_VTX_PORT\n"); return;
+        }
+        settings.vtx_uart = 1u;
+        if (strcmp(region, "EU") == 0) settings.vtx_region = 0u;
+        else if (strcmp(region, "US") == 0) settings.vtx_region = 1u;
+        else { printf("@CFG ERROR INVALID_VTX_REGION\n"); return; }
+        const char *band_position = strchr("ABEFRL", band);
+        if (!band_position || channel < 1u || channel > 8u ||
+            power < 1u || power > 2000u) {
+            printf("@CFG ERROR INVALID_VTX_CHANNEL\n"); return;
+        }
+        settings.vtx_band = (uint32_t)(band_position - "ABEFRL");
+        settings.vtx_channel = channel - 1u;
+        settings.vtx_power_mw = power;
+        if (flight_settings_set(&settings)) {
+            msp_displayport_init();
+            printf("@CFG OK SET_VTX_CONFIG\n");
+        } else printf("@CFG ERROR INVALID_VTX_CONFIG\n");
+        send_vtx_config(); send_osd_status();
+        return;
+    }
     if (sscanf(command, "SET_VBAT_MULTIPLIER %f",
                &settings.vbat_multiplier) == 1) {
         printf(flight_settings_set(&settings)

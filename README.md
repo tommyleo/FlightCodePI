@@ -27,6 +27,7 @@ downloads through a single desktop, web, or Android interface.
   or 16 kHz;
 - MPU6500, MPU9250, or MPU9255 on SPI0;
 - 16-channel SBUS or ELRS/CRSF receiver on GP0;
+- digital OSD via MSP DisplayPort at 115200 baud on UART1 TX / GP4;
 - DSHOT300, DSHOT600, and DSHOT1200;
 - roll, pitch, and yaw PID control with anti-windup and filtered D-term;
 - independent rates, expo, feedforward, and TPA;

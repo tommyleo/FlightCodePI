@@ -20,6 +20,7 @@ typedef struct {
     uint32_t missed_loop_slots;
     loop_task_t service_task;
     loop_task_t telemetry_task;
+    loop_task_t osd_task;
     loop_task_t esc_task;
     loop_task_t imu_task;
     uint32_t loop_measurement_start_us;
