@@ -1,5 +1,6 @@
 #include "config_protocol.h"
 #include "telemetry_text.h"
+#include "am32_passthrough.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -38,6 +39,12 @@ static bool arm_mode_active(const sbus_frame_t *receiver)
     return receiver->signal_valid && settings->arm_channel < SBUS_CHANNEL_COUNT &&
            receiver->channel_us[settings->arm_channel] >= settings->arm_min_us &&
            receiver->channel_us[settings->arm_channel] <= settings->arm_max_us;
+}
+
+static size_t am32_stdio_write(const uint8_t *data, size_t length)
+{
+    for (size_t i = 0U; i < length; ++i) putchar_raw(data[i]);
+    return length;
 }
 
 static void send_pids(void)
@@ -770,12 +777,14 @@ void config_protocol_init(void)
     memset(motor_test_percent, 0, sizeof(motor_test_percent));
     dfu_pending = false;
     reboot_pending = false;
+    am32_passthrough_init(am32_stdio_write);
 }
 
 void config_protocol_update(const sbus_frame_t *receiver, bool armed)
 {
     int character;
     while ((character = getchar_timeout_us(0u)) != PICO_ERROR_TIMEOUT) {
+        if (am32_passthrough_consume((uint8_t)character, armed)) continue;
         if (character == '\r') continue;
         if (character == '\n') {
             input_line[input_length] = '\0';
@@ -814,7 +823,12 @@ bool config_protocol_is_client_active(void)
 
 bool config_protocol_motor_output_suppressed(void)
 {
-    return pid_simulation_enabled;
+    return pid_simulation_enabled || am32_passthrough_active();
+}
+
+bool config_protocol_esc_passthrough_active(void)
+{
+    return am32_passthrough_active();
 }
 
 bool config_protocol_pid_simulation_enabled(void)

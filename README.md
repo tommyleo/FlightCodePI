@@ -106,6 +106,25 @@ The firmware requires:
 During PID simulation, control calculations remain active while all four
 physical DSHOT outputs are forced to zero.
 
+## AM32 ESC configurator
+
+FlightCodePI exposes a Betaflight-compatible MSP/4-way passthrough to
+[AM32 Configurator](https://am32.ca/configurator). Remove the propellers,
+connect USB, open the AM32 configurator in Chrome or Edge, select the
+FlightCodePI serial port, and only then power the ESCs. The passthrough is
+rejected while the flight controller is armed. It supports AM32 ARM
+bootloader discovery, settings read/write and firmware updates over each
+motor signal wire; legacy Atmel and Silabs ESC bootloaders are not supported.
+
+AM32 bootloader discovery uses the current 21-byte BLHeli probe: twelve
+leading `0x00` bytes followed by `0D 42 4C 48 65 6C 69 F4 7D`.  Do not use
+the legacy 17-byte/eight-zero probe: current AM32 bootloaders do not answer it,
+and the configurator reports `cmd_DeviceInitFlash: ACK_D_GENERAL_ERROR`.
+The STM32 implementation has been verified on a CLRacingF4 with a SEQURE
+4-in-1 F421 ESC running AM32 2.17 (bootloader v13), with all four ESC channels
+detected through their motor signal wires. FlightCodePI uses the same 4-way
+and AM32 bootloader protocol implementation.
+
 See [HARDWARE.md](HARDWARE.md) for the complete pinout, plus the dedicated
 [SBUS receiver](docs/SBUS_RECEIVER.md) and
 [motors/ESC](docs/MOTORS_AND_ESC.md) wiring guides.

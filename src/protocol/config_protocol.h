@@ -12,6 +12,7 @@ void config_protocol_init(void);
 void config_protocol_update(const sbus_frame_t *receiver, bool armed);
 bool config_protocol_is_client_active(void);
 bool config_protocol_motor_output_suppressed(void);
+bool config_protocol_esc_passthrough_active(void);
 bool config_protocol_pid_simulation_enabled(void);
 bool config_protocol_get_motor_test(const sbus_frame_t *receiver,
                                     uint8_t motor_percent[4]);

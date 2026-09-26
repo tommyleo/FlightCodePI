@@ -410,6 +410,7 @@ static void main_loop_step(main_loop_state_t *state)
             arm_switch_was_low = false;
         }
     }
+    if (config_protocol_esc_passthrough_active()) return;
     if (service_due) {
         update_buzzer(&state->receiver);
         battery_voltage_update();

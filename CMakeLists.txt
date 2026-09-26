@@ -46,6 +46,7 @@ add_executable(FlightCodePI
         src/drivers/imu/mpu6050.c
         src/drivers/imu/mpu6500.c
         src/drivers/motors/esc_controller.c
+        src/protocol/am32_passthrough.c
         src/drivers/osd/msp_displayport.c
         src/drivers/receiver/sbus_receiver.c
         src/protocol/config_protocol.c

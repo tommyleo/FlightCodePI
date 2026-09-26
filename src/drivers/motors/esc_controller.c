@@ -2,9 +2,11 @@
 
 #include <stdbool.h>
 
+#include "am32_esc_io.h"
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/pio.h"
+#include "hardware/sync.h"
 #include "pico/stdlib.h"
 #include "dshot.pio.h"
 
@@ -303,3 +305,72 @@ uint16_t esc_controller_get_last_command(const esc_controller_t *esc)
 {
     return esc->last_command;
 }
+
+uint8_t am32_esc_count(void) { return registered_esc_count; }
+
+void am32_esc_begin(void)
+{
+    while (dshot_frame_active()) tight_loop_contents();
+    uint32_t mask = 0U;
+    for (uint8_t i = 0U; i < registered_esc_count; ++i)
+        mask |= 1U << registered_escs[i]->state_machine;
+    pio_set_sm_mask_enabled(pio1, mask, false);
+    for (uint8_t i = 0U; i < registered_esc_count; ++i) {
+        const uint gpio = registered_escs[i]->gpio;
+        gpio_set_function(gpio, GPIO_FUNC_SIO);
+        gpio_set_dir(gpio, GPIO_IN);
+        gpio_pull_up(gpio);
+    }
+}
+
+void am32_esc_end(void)
+{
+    uint32_t mask = 0U;
+    for (uint8_t i = 0U; i < registered_esc_count; ++i) {
+        esc_controller_t *esc = registered_escs[i];
+        pio_gpio_init(pio1, esc->gpio);
+        pio_sm_set_consecutive_pindirs(pio1, esc->state_machine,
+                                       esc->gpio, 1U, true);
+        pio_sm_clear_fifos(pio1, esc->state_machine);
+        pio_sm_restart(pio1, esc->state_machine);
+        pio_sm_set_pins_with_mask(pio1, esc->state_machine, 0U,
+                                  1U << esc->gpio);
+        mask |= 1U << esc->state_machine;
+    }
+    pio_enable_sm_mask_in_sync(pio1, mask);
+}
+
+void am32_esc_input(uint8_t index)
+{
+    const uint gpio = registered_escs[index]->gpio;
+    gpio_set_function(gpio, GPIO_FUNC_SIO);
+    gpio_set_dir(gpio, GPIO_IN);
+    gpio_pull_up(gpio);
+}
+
+void am32_esc_output(uint8_t index)
+{
+    const uint gpio = registered_escs[index]->gpio;
+    gpio_set_function(gpio, GPIO_FUNC_SIO);
+    gpio_put(gpio, true);
+    gpio_set_dir(gpio, GPIO_OUT);
+}
+
+bool am32_esc_read(uint8_t index)
+{
+    return gpio_get(registered_escs[index]->gpio) != 0;
+}
+
+void am32_esc_write(uint8_t index, bool high)
+{
+    gpio_put(registered_escs[index]->gpio, high);
+}
+
+uint32_t am32_esc_micros(void) { return time_us_32(); }
+uint32_t am32_esc_timing_now(void) { return time_us_32(); }
+void am32_esc_wait_until(uint32_t started, uint32_t offset_us)
+{
+    while ((uint32_t)(time_us_32() - started) < offset_us) tight_loop_contents();
+}
+uint32_t am32_esc_critical_enter(void) { return save_and_disable_interrupts(); }
+void am32_esc_critical_exit(uint32_t state) { restore_interrupts(state); }
