@@ -1,6 +1,6 @@
 # FlightCodePI
 
-Current release: **1.2.0**.
+Current release: **1.4.0**.
 
 ## FlightCode in action! 🚀
 
@@ -113,7 +113,7 @@ See [HARDWARE.md](HARDWARE.md) for the complete pinout, plus the dedicated
 ## Direct throttle and storage formats
 
 Throttle is applied directly to the controller and mixer on each update.
-Log metadata uses version 4; exports contain a single throttle channel.
+Log metadata uses version 5 with integer PID/feedforward values; exports contain a single throttle channel.
 Settings saved by the preceding firmware version are not migrated; configure
 and save the aircraft settings again after updating. Existing onboard logs
 from the preceding format are not loaded.

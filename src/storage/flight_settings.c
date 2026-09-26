@@ -10,7 +10,7 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 14u
+#define SETTINGS_VERSION 15u
 #define SETTINGS_LEGACY_VERSION_13 13u
 #define SETTINGS_LEGACY_VERSION_12 12u
 #define SETTINGS_LEGACY_VERSION_11 11u
@@ -192,11 +192,9 @@ static bool finite_range(float value, float minimum, float maximum)
     return isfinite(value) && value >= minimum && value <= maximum;
 }
 
-static bool valid_pid(const pid_axis_t *pid)
+static bool valid_pid(const pid_settings_t *pid)
 {
-    return finite_range(pid->kp, 0.0f, 1000.0f) &&
-           finite_range(pid->ki, 0.0f, 1000.0f) &&
-           finite_range(pid->kd, 0.0f, 1000.0f);
+    return pid->kp <= 2000u && pid->ki <= 2000u && pid->kd <= 5000u;
 }
 
 static bool valid_settings(const flight_settings_t *settings)
@@ -223,9 +221,9 @@ static bool valid_settings(const flight_settings_t *settings)
            finite_range(settings->pitch_rate_dps, 100.0f, 1200.0f) &&
            finite_range(settings->yaw_rate_dps, 100.0f, 1200.0f) &&
            finite_range(settings->rate_expo, 0.0f, 0.9f) &&
-           finite_range(settings->roll_feedforward, 0.0f, 1.0f) &&
-           finite_range(settings->pitch_feedforward, 0.0f, 1.0f) &&
-           finite_range(settings->yaw_feedforward, 0.0f, 1.0f) &&
+           settings->roll_feedforward <= 1000u &&
+           settings->pitch_feedforward <= 1000u &&
+           settings->yaw_feedforward <= 1000u &&
            finite_range(settings->tpa_attenuation, 0.0f, 1.0f) &&
            finite_range(settings->tpa_breakpoint_percent, 0.0f, 100.0f) &&
            finite_range(settings->gyro_lpf_hz, 50.0f, 250.0f) &&
@@ -261,16 +259,16 @@ static bool valid_settings(const flight_settings_t *settings)
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 {
-    settings->roll = (pid_axis_t){0.10100f, 0.19000f, 0.00120f};
-    settings->pitch = (pid_axis_t){0.09950f, 0.20000f, 0.00100f};
-    settings->yaw = (pid_axis_t){0.15000f, 0.25000f, 0.00000f};
+    settings->roll = (pid_settings_t){101u, 190u, 120u};
+    settings->pitch = (pid_settings_t){100u, 200u, 100u};
+    settings->yaw = (pid_settings_t){150u, 250u, 0u};
     settings->roll_rate_dps = 420.0f;
     settings->pitch_rate_dps = 420.0f;
     settings->yaw_rate_dps = 320.0f;
     settings->rate_expo = 0.30f;
-    settings->roll_feedforward = 0.025f;
-    settings->pitch_feedforward = 0.025f;
-    settings->yaw_feedforward = 0.015f;
+    settings->roll_feedforward = 25u;
+    settings->pitch_feedforward = 25u;
+    settings->yaw_feedforward = 15u;
     settings->tpa_attenuation = 0.20f;
     settings->tpa_breakpoint_percent = 70.0f;
     settings->gyro_lpf_hz = 100.0f;
@@ -281,7 +279,7 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 void flight_settings_reset_defaults(void)
 {
     current_settings = (flight_settings_t){
-        .dshot_rate_kbps = 600u,
+        .dshot_rate_kbps = 300u,
         .motor_idle_percent = 5.0f,
         .receiver_channel_order = RECEIVER_ORDER_TAER1234,
         .arm_channel = 5u,
@@ -315,6 +313,10 @@ void flight_settings_init(void)
     const uint8_t *flash =
         (const uint8_t *)(XIP_BASE + SETTINGS_FLASH_OFFSET);
     const settings_record_t *stored = (const settings_record_t *)flash;
+    if (stored->magic == SETTINGS_MAGIC && stored->version < SETTINGS_VERSION) {
+        flight_settings_reset_defaults();
+        return;
+    }
     if (stored->magic == SETTINGS_MAGIC &&
         stored->version == SETTINGS_VERSION &&
         stored->checksum ==
@@ -429,7 +431,7 @@ void flight_settings_init(void)
         if (current_settings.dshot_rate_kbps != 300u &&
             current_settings.dshot_rate_kbps != 600u &&
             current_settings.dshot_rate_kbps != 1200u) {
-            current_settings.dshot_rate_kbps = 600u;
+            current_settings.dshot_rate_kbps = 300u;
         }
         settings_saved = false;
         return;
@@ -467,9 +469,18 @@ void flight_settings_init(void)
         legacy->checksum ==
             hash_record(legacy, offsetof(legacy_record_v3_t, checksum))) {
         flight_settings_reset_defaults();
-        current_settings.roll = legacy->settings.roll;
-        current_settings.pitch = legacy->settings.pitch;
-        current_settings.yaw = legacy->settings.yaw;
+        current_settings.roll = (pid_settings_t){
+            (uint32_t)lroundf(legacy->settings.roll.kp * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.roll.ki * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.roll.kd * PID_D_DIVISOR)};
+        current_settings.pitch = (pid_settings_t){
+            (uint32_t)lroundf(legacy->settings.pitch.kp * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.pitch.ki * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.pitch.kd * PID_D_DIVISOR)};
+        current_settings.yaw = (pid_settings_t){
+            (uint32_t)lroundf(legacy->settings.yaw.kp * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.yaw.ki * PID_PI_DIVISOR),
+            (uint32_t)lroundf(legacy->settings.yaw.kd * PID_D_DIVISOR)};
         current_settings.dshot_rate_kbps = legacy->settings.dshot_rate_kbps;
         settings_saved = false;
         return;

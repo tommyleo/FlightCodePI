@@ -172,7 +172,7 @@ void flight_log_start(void)
     flight_metadata.main_loop_hz = s->main_loop_hz;
     flight_metadata.gyro_rate_hz = imu_get_gyro_rate_hz();
     flight_metadata.log_rate_hz = FLIGHT_LOG_RATE_HZ;
-    const pid_axis_t gains[3] = {s->roll, s->pitch, s->yaw};
+    const pid_settings_t gains[3] = {s->roll, s->pitch, s->yaw};
     for (uint8_t i = 0u; i < 3u; ++i) {
         flight_metadata.pids[i * 3u] = gains[i].kp;
         flight_metadata.pids[i * 3u + 1u] = gains[i].ki;

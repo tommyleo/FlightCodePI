@@ -38,10 +38,13 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(flight_log_record_t) == 40u,
                "flight log record format must remain 40 bytes");
 
-#define FLIGHT_LOG_METADATA_VERSION 4u
+#define FLIGHT_LOG_METADATA_VERSION 5u
 typedef struct __attribute__((packed)) {
     uint32_t version, main_loop_hz, gyro_rate_hz, log_rate_hz;
-    float pids[9], rates[4], feedforward[3], tpa[2], filters[2], alignment[3];
+    uint32_t pids[9];
+    float rates[4];
+    uint32_t feedforward[3];
+    float tpa[2], filters[2], alignment[3];
     float motor_idle_percent;
     uint32_t motor_protocol, motor_direction_reversed, receiver_protocol;
     uint16_t initial_battery_centivolts;
@@ -49,7 +52,7 @@ typedef struct __attribute__((packed)) {
 } flight_log_metadata_t;
 
 _Static_assert(sizeof(flight_log_metadata_t) == 128U,
-               "metadata v4 must remain 128 bytes");
+               "metadata v5 must remain 128 bytes");
 static inline bool flight_log_metadata_decode(flight_log_metadata_t *out,
                                                const void *stored)
 {

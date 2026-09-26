@@ -58,6 +58,14 @@ static bool calibrated;
 static bool mixer_saturated;
 static bool airmode_active;
 
+static struct {
+    pid_settings_t roll_source, pitch_source, yaw_source;
+    uint32_t roll_ff_source, pitch_ff_source, yaw_ff_source;
+    pid_axis_t roll, pitch, yaw;
+    float roll_ff, pitch_ff, yaw_ff;
+    bool initialized;
+} tuning_cache;
+
 /* Coefficients are identical for all three axes. Recompute only when the
  * sample interval or a configured cutoff changes; filter state is untouched. */
 static struct {
@@ -86,6 +94,46 @@ static void update_filter_coefficients(float dt, float gyro_hz, float dterm_hz)
 static float clamp_float(float value, float minimum, float maximum)
 {
     return value < minimum ? minimum : (value > maximum ? maximum : value);
+}
+
+static void refresh_tuning_cache(const flight_settings_t *settings)
+{
+    if (tuning_cache.initialized &&
+        memcmp(&tuning_cache.roll_source, &settings->roll,
+               sizeof(settings->roll)) == 0 &&
+        memcmp(&tuning_cache.pitch_source, &settings->pitch,
+               sizeof(settings->pitch)) == 0 &&
+        memcmp(&tuning_cache.yaw_source, &settings->yaw,
+               sizeof(settings->yaw)) == 0 &&
+        tuning_cache.roll_ff_source == settings->roll_feedforward &&
+        tuning_cache.pitch_ff_source == settings->pitch_feedforward &&
+        tuning_cache.yaw_ff_source == settings->yaw_feedforward) return;
+
+    tuning_cache.roll_source = settings->roll;
+    tuning_cache.pitch_source = settings->pitch;
+    tuning_cache.yaw_source = settings->yaw;
+    tuning_cache.roll_ff_source = settings->roll_feedforward;
+    tuning_cache.pitch_ff_source = settings->pitch_feedforward;
+    tuning_cache.yaw_ff_source = settings->yaw_feedforward;
+    tuning_cache.roll = (pid_axis_t){
+        (float)settings->roll.kp / PID_PI_DIVISOR,
+        (float)settings->roll.ki / PID_PI_DIVISOR,
+        (float)settings->roll.kd / PID_D_DIVISOR};
+    tuning_cache.pitch = (pid_axis_t){
+        (float)settings->pitch.kp / PID_PI_DIVISOR,
+        (float)settings->pitch.ki / PID_PI_DIVISOR,
+        (float)settings->pitch.kd / PID_D_DIVISOR};
+    tuning_cache.yaw = (pid_axis_t){
+        (float)settings->yaw.kp / PID_PI_DIVISOR,
+        (float)settings->yaw.ki / PID_PI_DIVISOR,
+        (float)settings->yaw.kd / PID_D_DIVISOR};
+    tuning_cache.roll_ff =
+        (float)settings->roll_feedforward / FEEDFORWARD_DIVISOR;
+    tuning_cache.pitch_ff =
+        (float)settings->pitch_feedforward / FEEDFORWARD_DIVISOR;
+    tuning_cache.yaw_ff =
+        (float)settings->yaw_feedforward / FEEDFORWARD_DIVISOR;
+    tuning_cache.initialized = true;
 }
 
 static float pt1(pt1_filter_t *filter, float input)
@@ -307,6 +355,7 @@ bool rate_controller_update(const imu_sample_t *imu,
     }
 
     const flight_settings_t *settings = flight_settings_get();
+    refresh_tuning_cache(settings);
     if (!armed) {
         track_stationary_gyro_bias(imu, dt);
     } else {
@@ -364,9 +413,9 @@ bool rate_controller_update(const imu_sample_t *imu,
     }
 
     output->roll_pid_percent =
-        pid_update(&roll_pid, &settings->roll,
+        pid_update(&roll_pid, &tuning_cache.roll,
                    output->roll_setpoint_dps, output->roll_rate_dps,
-                   settings->roll_feedforward, dt,
+                   tuning_cache.roll_ff, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
                    settings->dynamic_d_boost_percent,
                    airmode_active, false,
@@ -374,9 +423,9 @@ bool rate_controller_update(const imu_sample_t *imu,
                    &output->i_term_percent[0], &output->d_term_percent[0],
                    &output->ff_term_percent[0]);
     output->pitch_pid_percent =
-        pid_update(&pitch_pid, &settings->pitch,
+        pid_update(&pitch_pid, &tuning_cache.pitch,
                    output->pitch_setpoint_dps, output->pitch_rate_dps,
-                   settings->pitch_feedforward, dt,
+                   tuning_cache.pitch_ff, dt,
                    PID_ROLL_PITCH_OUTPUT_LIMIT_PERCENT, tpa_factor,
                    settings->dynamic_d_boost_percent,
                    airmode_active, false,
@@ -384,9 +433,9 @@ bool rate_controller_update(const imu_sample_t *imu,
                    &output->i_term_percent[1], &output->d_term_percent[1],
                    &output->ff_term_percent[1]);
     output->yaw_pid_percent =
-        pid_update(&yaw_pid, &settings->yaw,
+        pid_update(&yaw_pid, &tuning_cache.yaw,
                    output->yaw_setpoint_dps, output->yaw_rate_dps,
-                   settings->yaw_feedforward, dt,
+                   tuning_cache.yaw_ff, dt,
                    PID_YAW_OUTPUT_LIMIT_PERCENT, tpa_factor,
                   0.0f, airmode_active, true,
                   &output->p_term_percent[2], &output->i_term_percent[2],

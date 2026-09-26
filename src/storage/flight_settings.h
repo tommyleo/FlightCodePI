@@ -11,10 +11,20 @@ typedef struct {
     float kd;
 } pid_axis_t;
 
+#define PID_PI_DIVISOR 1000.0f
+#define PID_D_DIVISOR 100000.0f
+#define FEEDFORWARD_DIVISOR 1000.0f
+
 typedef struct {
-    pid_axis_t roll;
-    pid_axis_t pitch;
-    pid_axis_t yaw;
+    uint32_t kp;
+    uint32_t ki;
+    uint32_t kd;
+} pid_settings_t;
+
+typedef struct {
+    pid_settings_t roll;
+    pid_settings_t pitch;
+    pid_settings_t yaw;
     uint32_t dshot_rate_kbps;
     float board_roll_deg;
     float board_pitch_deg;
@@ -25,9 +35,9 @@ typedef struct {
     float pitch_rate_dps;
     float yaw_rate_dps;
     float rate_expo;
-    float roll_feedforward;
-    float pitch_feedforward;
-    float yaw_feedforward;
+    uint32_t roll_feedforward;
+    uint32_t pitch_feedforward;
+    uint32_t yaw_feedforward;
     float tpa_attenuation;
     float tpa_breakpoint_percent;
     uint32_t receiver_channel_order;
