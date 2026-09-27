@@ -4,11 +4,17 @@
 
 #include "am32_esc_io.h"
 
-/* MSP commands queried by am32.ca/configurator before entering 4-way mode. */
+/* MSP commands queried by ESC configurators before entering 4-way mode. */
 #define MSP_API_VERSION 1U
 #define MSP_FC_VARIANT 2U
+#define MSP_FC_VERSION 3U
+#define MSP_BOARD_INFO 4U
+#define MSP_BUILD_INFO 5U
+#define MSP_FEATURE_CONFIG 36U
+#define MSP_MOTOR 104U
 #define MSP_BATTERY_STATE 130U
 #define MSP_MOTOR_CONFIG 131U
+#define MSP_UID 160U
 #define MSP_SET_PASSTHROUGH 245U
 
 #define FOURWAY_LOCAL_ESCAPE 0x2FU
@@ -385,17 +391,39 @@ static void process_fourway(void)
 
 static void process_msp(bool armed)
 {
-    uint8_t response[16] = {0};
+    uint8_t response[32] = {0};
     uint8_t length = 0U;
     switch (msp_command) {
     case MSP_API_VERSION:
         response[0] = 0U; response[1] = 1U; response[2] = 46U; length = 3U; break;
     case MSP_FC_VARIANT:
         memcpy(response, "BTFL", 4U); length = 4U; break;
+    case MSP_FC_VERSION:
+        response[0] = 4U; response[1] = 5U; response[2] = 0U; length = 3U; break;
+    case MSP_BOARD_INFO:
+        memcpy(response, "FLTC", 4U); length = 6U; break;
+    case MSP_BUILD_INFO:
+        memcpy(response, __DATE__, 11U);
+        memcpy(&response[11], __TIME__, 8U);
+        length = 26U;
+        break;
+    case MSP_FEATURE_CONFIG:
+        length = 4U;
+        break;
+    case MSP_MOTOR:
+        for (uint8_t i = 0U; i < am32_esc_count(); ++i) {
+            response[2U * i] = 0xE8U;
+            response[2U * i + 1U] = 0x03U;
+        }
+        length = (uint8_t)(2U * am32_esc_count());
+        break;
     case MSP_BATTERY_STATE:
         length = 9U; break;
     case MSP_MOTOR_CONFIG:
         response[6] = am32_esc_count(); length = 10U; break;
+    case MSP_UID:
+        length = 12U;
+        break;
     case MSP_SET_PASSTHROUGH:
         response[0] = armed ? 0U : am32_esc_count(); length = 1U;
         send_msp(msp_command, response, length);
