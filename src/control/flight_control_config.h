@@ -15,7 +15,7 @@
 #define GYRO_PITCH_SIGN 1.0f
 #define GYRO_YAW_SIGN 1.0f
 
-// Mixer Quad X, ordine Betaflight:
+// Mixer Quad X, ordine motori:
 // M1 posteriore destro, M2 anteriore destro,
 // M3 posteriore sinistro, M4 anteriore sinistro.
 #define MIXER_MOTOR_COUNT 4u

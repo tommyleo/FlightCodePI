@@ -7,7 +7,7 @@
 #define VBAT_ADC_INPUT 0u
 #define VBAT_ADC_REFERENCE_V 3.3f
 #define VBAT_ADC_MAX 4095.0f
-#define VBAT_BETAFLIGHT_DIVIDER 11.0f
+#define VBAT_VOLTAGE_DIVIDER 11.0f
 #define VBAT_AVERAGE_SAMPLES 8u
 
 static uint32_t adc_total;
@@ -33,7 +33,7 @@ void battery_voltage_update(void)
 
     const float average = (float)adc_total / (float)VBAT_AVERAGE_SAMPLES;
     const float measured = average * VBAT_ADC_REFERENCE_V *
-        VBAT_BETAFLIGHT_DIVIDER * flight_settings_get()->vbat_multiplier /
+        VBAT_VOLTAGE_DIVIDER * flight_settings_get()->vbat_multiplier /
         VBAT_ADC_MAX;
     filtered_voltage = filtered_voltage <= 0.0f
         ? measured

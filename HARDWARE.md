@@ -71,7 +71,7 @@ flyback diode when required. Always connect the driver ground to Pico GND.
 ## VBAT voltage sensing
 
 GP26 (physical pin 31) is the FlightCodePI **VBAT** pad. Build an 11:1 divider
-to match Betaflight's standard `vbat_scale=110`:
+for the nominal battery-voltage conversion:
 
 ```text
 Battery + ---- 100 kΩ ----+---- GP26 / VBAT

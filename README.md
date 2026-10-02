@@ -39,7 +39,7 @@ downloads through a single desktop, web, or Android interface.
 - motor test with timeout and ARM-channel interlock;
 - PID simulation with physical motor outputs always suppressed;
 - extended telemetry and receiver diagnostics;
-- GP26/ADC0 battery sensing with Betaflight scale 110 and persistent final
+- GP26/ADC0 battery sensing with an 11:1 voltage divider and persistent final
   calibration multiplier;
 - persistent 200 Hz flight log sized to the reserved flash area and retained
   above 10% throttle;
@@ -228,7 +228,7 @@ physical DSHOT outputs are forced to zero.
 
 ## AM32 ESC configurator
 
-FlightCodePI exposes a Betaflight-compatible MSP/4-way passthrough to
+FlightCodePI exposes an MSP/4-way passthrough to
 [AM32 Configurator](https://am32.ca/configurator). Remove the propellers,
 connect USB, open the AM32 configurator in Chrome or Edge, select the
 FlightCodePI serial port, and only then power the ESCs. The passthrough is
