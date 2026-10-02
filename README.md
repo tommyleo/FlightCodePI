@@ -1,6 +1,6 @@
 # FlightCodePI
 
-Current release: **1.4.0**.
+Current release: **1.5.0**.
 
 ## FlightCode in action! 🚀
 
