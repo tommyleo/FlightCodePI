@@ -259,9 +259,9 @@ static bool valid_settings(const flight_settings_t *settings)
 
 void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
 {
-    settings->roll = (pid_settings_t){101u, 190u, 120u};
-    settings->pitch = (pid_settings_t){100u, 200u, 100u};
-    settings->yaw = (pid_settings_t){150u, 250u, 0u};
+    settings->roll = (pid_settings_t){110u, 180u, 105u};
+    settings->pitch = (pid_settings_t){110u, 200u, 105u};
+    settings->yaw = (pid_settings_t){150u, 260u, 0u};
     settings->roll_rate_dps = 420.0f;
     settings->pitch_rate_dps = 420.0f;
     settings->yaw_rate_dps = 320.0f;
@@ -271,8 +271,8 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings)
     settings->yaw_feedforward = 15u;
     settings->tpa_attenuation = 0.20f;
     settings->tpa_breakpoint_percent = 70.0f;
-    settings->gyro_lpf_hz = 100.0f;
-    settings->dterm_lpf_hz = 60.0f;
+    settings->gyro_lpf_hz = 90.0f;
+    settings->dterm_lpf_hz = 50.0f;
     settings->dynamic_d_boost_percent = 25.0f;
 }
 
