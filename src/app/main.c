@@ -419,7 +419,7 @@ static void main_loop_step(main_loop_state_t *state)
     if (task_due(&state->osd_task, state->loop_hz))
         msp_displayport_update(battery_voltage_get(), escs_armed,
                                loop_start_us);
-    msp_displayport_process();
+    msp_displayport_process(escs_armed);
     state->imu_task.rate_hz =
         imu_get_update_rate_hz(
             escs_armed, flight_settings_get()->gyro_rate_hz);

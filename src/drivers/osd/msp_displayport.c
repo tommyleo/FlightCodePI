@@ -5,41 +5,56 @@
 #include <string.h>
 
 #include "flight_settings.h"
+#include "pico/time.h"
+#include "hdzero_msp.h"
 #include "hardware/gpio.h"
 #include "hardware/uart.h"
 
 #define DISPLAYPORT_UART uart1
 #define DISPLAYPORT_TX_GPIO 4u
+#define DISPLAYPORT_RX_GPIO 5u
 #define DISPLAYPORT_BAUD 115200u
 #define MSP_DISPLAYPORT 182u
 #define TX_BUFFER_SIZE 512u
 #define SCREEN_COLUMNS 30u
 #define HEARTBEAT_PERIOD_US 500000u
 
+static hdzero_msp_t vtx_peer;
 static uint8_t tx_buffer[TX_BUFFER_SIZE];
 static uint16_t tx_head, tx_tail;
 static uint32_t last_heartbeat_us, flight_started_us, flight_duration_us;
 static bool available, previous_armed, timer_started, release_sent;
 
-static bool enqueue_frame(const uint8_t *payload, uint8_t length)
+static bool enqueue_packet(bool v2, char direction, uint16_t command, const uint8_t *payload, uint8_t length)
 {
     const uint16_t used = (uint16_t)((tx_head - tx_tail) & (TX_BUFFER_SIZE - 1u));
-    if (TX_BUFFER_SIZE - 1u - used < (uint16_t)length + 6u) return false;
-    uint8_t checksum = length ^ MSP_DISPLAYPORT;
-    const uint8_t prefix[] = {'$', 'M', '>', length, MSP_DISPLAYPORT};
+    if (TX_BUFFER_SIZE - 1u - used < (uint16_t)length + (v2 ? 9u : 6u)) return false;
+    uint8_t checksum = 0u;
+    const uint8_t prefix[] = {'$', v2 ? 'X' : 'M', (uint8_t)direction};
     for (size_t i = 0; i < sizeof(prefix); ++i) {
         tx_buffer[tx_head] = prefix[i];
         tx_head = (uint16_t)((tx_head + 1u) & (TX_BUFFER_SIZE - 1u));
     }
+    const uint8_t header[] = {0u, (uint8_t)command, (uint8_t)(command >> 8), length, 0u};
+    const uint8_t legacy[] = {length, (uint8_t)command};
+    const uint8_t *bytes=v2 ? header : legacy;
+    for (unsigned i=0; i<(v2 ? sizeof(header) : sizeof(legacy)); ++i) {
+        tx_buffer[tx_head]=bytes[i];
+        tx_head=(uint16_t)((tx_head+1u)&(TX_BUFFER_SIZE-1u));
+        checksum=v2 ? hdzero_crc(checksum,bytes[i]) : checksum ^ bytes[i];
+    }
     for (uint8_t i = 0; i < length; ++i) {
         tx_buffer[tx_head] = payload[i];
         tx_head = (uint16_t)((tx_head + 1u) & (TX_BUFFER_SIZE - 1u));
-        checksum ^= payload[i];
+        checksum=v2 ? hdzero_crc(checksum,payload[i]) : checksum ^ payload[i];
     }
     tx_buffer[tx_head] = checksum;
     tx_head = (uint16_t)((tx_head + 1u) & (TX_BUFFER_SIZE - 1u));
     return true;
 }
+
+static bool enqueue_frame(const uint8_t *payload, uint8_t length)
+{ return enqueue_packet(false,'>',MSP_DISPLAYPORT,payload,length); }
 
 static void enqueue_simple(uint8_t command)
 {
@@ -72,8 +87,13 @@ void msp_displayport_init(void)
         settings->vtx_uart != 1u) return;
     uart_init(DISPLAYPORT_UART, DISPLAYPORT_BAUD);
     gpio_set_function(DISPLAYPORT_TX_GPIO, GPIO_FUNC_UART);
+    gpio_set_function(DISPLAYPORT_RX_GPIO, GPIO_FUNC_UART);
     uart_set_format(DISPLAYPORT_UART, 8u, 1u, UART_PARITY_NONE);
     uart_set_hw_flow(DISPLAYPORT_UART, false, false);
+    memset(&vtx_peer,0,sizeof(vtx_peer));
+    vtx_peer.started_us=time_us_32();
+    hdzero_configure(&vtx_peer,settings->vtx_band,settings->vtx_channel,
+                     settings->vtx_power_mw,false);
     available = true;
     previous_armed = timer_started = release_sent = false;
     last_heartbeat_us = 0u;
@@ -82,9 +102,17 @@ void msp_displayport_init(void)
     enqueue_simple(0u);
 }
 
-void msp_displayport_process(void)
+void msp_displayport_process(bool armed)
 {
-    if (!available || tx_tail == tx_head || !uart_is_writable(DISPLAYPORT_UART))
+    if (!msp_displayport_is_available()) return;
+    const uint32_t now=time_us_32();
+    const flight_settings_t *settings=flight_settings_get();
+    hdzero_configure(&vtx_peer,settings->vtx_band,settings->vtx_channel,
+                     settings->vtx_power_mw,armed);
+    for (unsigned i=0; i<8u && uart_is_readable(DISPLAYPORT_UART); ++i)
+        hdzero_receive(&vtx_peer,(uint8_t)uart_getc(DISPLAYPORT_UART),armed,now,enqueue_packet);
+    hdzero_service(&vtx_peer,now,enqueue_packet);
+    if (tx_tail == tx_head || !uart_is_writable(DISPLAYPORT_UART))
         return;
     uart_putc_raw(DISPLAYPORT_UART, tx_buffer[tx_tail]);
     tx_tail = (uint16_t)((tx_tail + 1u) & (TX_BUFFER_SIZE - 1u));
@@ -92,7 +120,7 @@ void msp_displayport_process(void)
 
 void msp_displayport_update(float voltage, bool armed, uint32_t now_us)
 {
-    if (!available) return;
+    if (!msp_displayport_is_available()) return;
     const flight_settings_t *settings = flight_settings_get();
     if ((uint32_t)(now_us - last_heartbeat_us) >= HEARTBEAT_PERIOD_US) {
         enqueue_simple(0u);
@@ -137,9 +165,16 @@ void msp_displayport_update(float voltage, bool armed, uint32_t now_us)
     enqueue_simple(4u);
 }
 
-bool msp_displayport_is_available(void) { return available; }
+bool msp_displayport_is_available(void)
+{
+    return available && flight_settings_get()->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP &&
+        flight_settings_get()->vtx_uart == 1u;
+}
 
 const char *msp_displayport_status_name(void)
 {
     return available ? "MSP_DISPLAYPORT_READY" : "MSP_DISPLAYPORT_NOT_CONFIGURED";
 }
+
+const char *msp_displayport_vtx_status_name(void)
+{ return msp_displayport_is_available() ? hdzero_status(&vtx_peer,time_us_32()) : "NOT_CONFIGURED"; }

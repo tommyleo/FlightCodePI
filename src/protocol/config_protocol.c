@@ -175,7 +175,7 @@ static void send_vtx_config(void)
            s->vtx_region ? "US" : "EU", bands[s->vtx_band],
            (unsigned long)(s->vtx_channel + 1u),
            (unsigned long)s->vtx_power_mw, flight_settings_are_saved() ? 1u : 0u);
-    printf("@CFG VTX_STATUS %s\n", msp_displayport_status_name());
+    printf("@CFG VTX_STATUS %s\n", msp_displayport_vtx_status_name());
 }
 
 static void send_osd_status(void)
@@ -267,6 +267,8 @@ static void process_command(const char *command,
     if (strcmp(command, "PING") == 0) {
         client_active = true;
         last_client_activity_us = time_us_32();
+        if (flight_settings_get()->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP)
+            printf("@CFG VTX_LINK_STATUS %s\n", msp_displayport_vtx_status_name());
         return;
     }
     if (strcmp(command, "BYE") == 0) {
