@@ -131,9 +131,18 @@ static void accept_byte(uint8_t byte)
         } else if (rx_index >= 2u &&
                    rx_index == (uint8_t)(rx_buffer[1] + 2u)) {
             const uint8_t length = rx_buffer[1];
-            if (length == 24u && rx_buffer[2] == CRSF_RC_CHANNELS_PACKED &&
-                crsf_crc8(&rx_buffer[2], (uint8_t)(length - 1u)) ==
+            if (crsf_crc8(&rx_buffer[2], (uint8_t)(length - 1u)) !=
                     rx_buffer[length + 1u]) {
+                diagnostics.stop_errors++;
+            } else if (rx_buffer[2] != CRSF_RC_CHANNELS_PACKED) {
+                /* Valid statistics and other CRSF traffic do not update
+                 * RC channels, their timestamp, or the failsafe state. */
+            } else if (length == 24u) {
+                if (!have_frame) {
+                    /* Discard acquisition errors once RC is first acquired. */
+                    diagnostics.parity_errors = 0u;
+                    diagnostics.stop_errors = 0u;
+                }
                 const uint8_t *payload = &rx_buffer[3];
                 uint32_t accumulator = 0u;
                 uint8_t bits = 0u;
