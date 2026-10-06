@@ -31,7 +31,7 @@ include(pico_sdk_import.cmake)
 
 project(FlightCodePI C CXX ASM)
 
-set(FLIGHTCODE_VERSION "1.6.0")
+set(FLIGHTCODE_VERSION "1.6.1")
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
@@ -60,6 +60,9 @@ pico_generate_pio_header(FlightCodePI
 
 pico_generate_pio_header(FlightCodePI
         ${CMAKE_CURRENT_LIST_DIR}/pio/crsf_rx.pio
+)
+pico_generate_pio_header(FlightCodePI
+        ${CMAKE_CURRENT_LIST_DIR}/pio/crsf_tx.pio
 )
 
 pico_generate_pio_header(FlightCodePI

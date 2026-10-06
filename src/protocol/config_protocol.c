@@ -254,7 +254,7 @@ static void process_command(const char *command,
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
                "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
-               "TELEMETRY_EXT RECEIVER_CONFIG BATTERY_VOLTAGE VBAT_CALIBRATION "
+               "TELEMETRY_EXT RECEIVER_CONFIG RECEIVER_BIND BATTERY_VOLTAGE VBAT_CALIBRATION "
                "VTX_CONFIG OSD OSD_LAYOUT\n");
         printf("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
         printf("@CFG SERIAL_PORTS PIO0 UART1\n");
@@ -414,6 +414,17 @@ static void process_command(const char *command,
     }
     if (armed) {
         printf("@CFG ERROR ARMED\n");
+        return;
+    }
+    if (strcmp(command, "BIND_RECEIVER") == 0) {
+        if (motor_test_enabled || pid_simulation_enabled) {
+            printf("@CFG ERROR BIND_BUSY\n");
+        } else if (flight_settings_get()->receiver_protocol != RECEIVER_PROTOCOL_CRSF) {
+            printf("@CFG ERROR BIND_REQUIRES_ELRS\n");
+        } else {
+            printf(sbus_receiver_bind() ? "@CFG OK BIND_RECEIVER\n"
+                          : "@CFG ERROR BIND_TX_FAILED\n");
+        }
         return;
     }
     if (strcmp(command, "CALIBRATE_GYRO") == 0) {

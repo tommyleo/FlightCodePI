@@ -9,6 +9,7 @@ and rejects invalid or failsafe data.
 | Receiver connection | Raspberry Pi Pico 2 / Pico 2 W |
 |---|---|
 | SBUS or ELRS/CRSF signal | GP0, physical pin 1 |
+| ELRS receiver RX (optional bind command return wire) | GP1, physical pin 2 |
 | Ground | GND, physical pin 3 recommended |
 | Receiver power | Supply required by the receiver; do not assume 3.3 V |
 
@@ -24,8 +25,11 @@ Use a suitable level shifter if the receiver output can exceed 3.3 V.
 
 For SBUS, connect the receiver's standard **inverted SBUS** output; inversion
 is performed in software. For ELRS, connect the receiver's non-inverted CRSF
-TX output. The firmware currently receives RC channels only and does not send
-CRSF telemetry back to the receiver.
+TX output. Connect GP1 to receiver RX to enable the **Bind receiver** button
+with ExpressLRS 3.4 or newer. Apply ELRS first, click the button while disarmed
+and with motor testing/PID simulation stopped, then select Bind on the radio.
+The message confirms transmission only; verify the receiver LED and channels.
+CRSF telemetry is not implemented. GP1 is driven only while sending the command.
 
 ## Channel assignment
 

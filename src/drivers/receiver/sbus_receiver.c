@@ -6,6 +6,8 @@
 #include "hardware/pio.h"
 #include "pico/time.h"
 #include "crsf_rx.pio.h"
+#include "crsf_tx.pio.h"
+#include "crsf_bind.h"
 #include "sbus_rx.pio.h"
 #include "flight_settings.h"
 
@@ -298,4 +300,44 @@ void sbus_receiver_get_diagnostics(sbus_diagnostics_t *result)
     if (result != NULL) {
         *result = diagnostics;
     }
+}
+
+bool sbus_receiver_bind(void)
+{
+    if (receiver_protocol != RECEIVER_PROTOCOL_CRSF ||
+        !pio_can_add_program(sbus_pio, &crsf_tx_program)) return false;
+    const int sm = pio_claim_unused_sm(sbus_pio, false);
+    if (sm < 0) return false;
+    const uint offset = pio_add_program(sbus_pio, &crsf_tx_program);
+    crsf_tx_program_init(sbus_pio, (uint)sm, offset, ELRS_TX_GPIO, CRSF_BAUD);
+    bool sent = true;
+    const uint32_t started_us = time_us_32();
+    for (uint i = 0; i < sizeof(crsf_bind_frame); ++i) {
+        while (pio_sm_is_tx_fifo_full(sbus_pio, (uint)sm)) {
+            if ((uint32_t)(time_us_32() - started_us) >= 5000u) {
+                sent = false;
+                goto cleanup;
+            }
+        }
+        pio_sm_put(sbus_pio, (uint)sm, crsf_bind_frame[i]);
+    }
+    /* Clear any earlier idle stall. The next stall follows the final stop bit. */
+    const uint32_t stalled = 1u << (PIO_FDEBUG_TXSTALL_LSB + (uint)sm);
+    sbus_pio->fdebug = stalled;
+    while ((sbus_pio->fdebug & stalled) == 0u) {
+        if ((uint32_t)(time_us_32() - started_us) >= 5000u) {
+            sent = false;
+            break;
+        }
+    }
+    if (sent) sleep_us(3u); /* Finish the final stop bit before releasing TX. */
+cleanup:
+    pio_sm_set_enabled(sbus_pio, (uint)sm, false);
+    pio_sm_clear_fifos(sbus_pio, (uint)sm);
+    pio_sm_set_consecutive_pindirs(sbus_pio, (uint)sm, ELRS_TX_GPIO, 1, false);
+    gpio_init(ELRS_TX_GPIO);
+    gpio_disable_pulls(ELRS_TX_GPIO);
+    pio_remove_program(sbus_pio, &crsf_tx_program, offset);
+    pio_sm_unclaim(sbus_pio, (uint)sm);
+    return sent;
 }
