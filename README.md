@@ -1,6 +1,6 @@
 # FlightCodePI
 
-Current release: **1.6.1**.
+Current release: **1.6.2**.
 
 ## FlightCode in action! 🚀
 
@@ -142,3 +142,13 @@ Log metadata uses version 5 with integer PID/feedforward values; exports contain
 Settings saved by the preceding firmware version are not migrated; configure
 and save the aircraft settings again after updating. Existing onboard logs
 from the preceding format are not loaded.
+
+### Startup ARM interlock
+
+The first valid receiver signal is checked at startup. If ARM is active,
+arming is blocked until restart. The analog/digital OSD displays an English
+warning, even when the normal OSD layout is disabled: power off and on again
+with ARM off. Without a valid receiver signal, the check remains pending.
+The onboard status LED stays on steadily during the lockout, including
+without OSD. Fresh configurations and factory resets default to AETR;
+existing saved channel mappings are preserved.

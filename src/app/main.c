@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "main.h"
+#include "boot_arm_guard.h"
 #include "loop_deadline.h"
 
 #include "pico/stdlib.h"
@@ -46,6 +47,7 @@ static int8_t roll_percent = 0;
 static int8_t pitch_percent = 0;
 static rate_controller_output_t rate_output;
 static bool arm_switch_was_low;
+static boot_arm_guard_t boot_arm_guard;
 static bool status_led_available;
 static bool status_led_on;
 static const unsigned int esc_gpios[ESC_COUNT] = {
@@ -118,6 +120,10 @@ static void status_led_set(bool enabled)
 
 static void status_led_update(bool receiver_signal_valid)
 {
+    if (boot_arm_guard.blocked) {
+        status_led_set(true);
+        return;
+    }
     const uint32_t phase =
         time_us_32() % STATUS_LED_PATTERN_PERIOD_US;
     const bool first_flash = phase < STATUS_LED_FLASH_US;
@@ -266,6 +272,12 @@ static void flight_control_step(const sbus_frame_t *receiver,
     const bool arm_switch = receiver_mode_active(
         receiver, settings->arm_channel,
         settings->arm_min_us, settings->arm_max_us);
+    boot_arm_guard_update(&boot_arm_guard, true, arm_switch);
+    if (boot_arm_guard.blocked) {
+        rate_controller_update(imu, false, 0u, 0, 0, 0, &rate_output);
+        stop_all_escs(escs);
+        return;
+    }
     if (!arm_switch) {
         arm_switch_was_low = true;
         if (escs_armed) {
@@ -417,7 +429,7 @@ static void main_loop_step(main_loop_state_t *state)
         flight_log_set_battery_voltage(battery_voltage_get());
     }
     if (task_due(&state->osd_task, state->loop_hz))
-        msp_displayport_update(battery_voltage_get(), escs_armed,
+        msp_displayport_update(battery_voltage_get(), escs_armed, boot_arm_guard.blocked,
                                loop_start_us);
     msp_displayport_process(escs_armed);
     state->imu_task.rate_hz =

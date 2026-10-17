@@ -281,7 +281,7 @@ void flight_settings_reset_defaults(void)
     current_settings = (flight_settings_t){
         .dshot_rate_kbps = 300u,
         .motor_idle_percent = 5.0f,
-        .receiver_channel_order = RECEIVER_ORDER_TAER1234,
+        .receiver_channel_order = RECEIVER_ORDER_AETR1234,
         .arm_channel = 5u,
         .arm_min_us = 1950u,
         .arm_max_us = 2100u,

@@ -118,13 +118,22 @@ void msp_displayport_process(bool armed)
     tx_tail = (uint16_t)((tx_tail + 1u) & (TX_BUFFER_SIZE - 1u));
 }
 
-void msp_displayport_update(float voltage, bool armed, uint32_t now_us)
+void msp_displayport_update(float voltage, bool armed, bool boot_arm_warning, uint32_t now_us)
 {
     if (!msp_displayport_is_available()) return;
     const flight_settings_t *settings = flight_settings_get();
     if ((uint32_t)(now_us - last_heartbeat_us) >= HEARTBEAT_PERIOD_US) {
         enqueue_simple(0u);
         last_heartbeat_us = now_us;
+    }
+    if (boot_arm_warning) {
+        release_sent = false;
+        enqueue_simple(2u);
+        enqueue_string(153u, "WARNING: ARM SWITCH ON");
+        enqueue_string(213u, "POWER OFF AND ON AGAIN");
+        enqueue_string(274u, "WITH ARM SWITCH OFF");
+        enqueue_simple(4u);
+        return;
     }
     if (!settings->osd_enabled) {
         if (!release_sent) { enqueue_simple(1u); release_sent = true; }
