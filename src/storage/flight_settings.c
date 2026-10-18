@@ -535,3 +535,8 @@ bool flight_settings_are_saved(void)
 {
     return settings_saved;
 }
+
+uint32_t flight_settings_schema_version(void)
+{
+    return SETTINGS_VERSION;
+}

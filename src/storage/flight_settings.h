@@ -85,4 +85,7 @@ void flight_settings_reset_tuning_defaults(flight_settings_t *settings);
 bool flight_settings_save(void);
 bool flight_settings_are_saved(void);
 
+/* Version of the complete persistent settings layout, used by backup files. */
+uint32_t flight_settings_schema_version(void);
+
 #endif

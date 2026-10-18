@@ -47,6 +47,12 @@ static size_t am32_stdio_write(const uint8_t *data, size_t length)
     return length;
 }
 
+#define BACKUP_REPLY printf
+#define BACKUP_FAMILY "FlightCodePI"
+#define BACKUP_BOARD "PICO2_W"
+#define BACKUP_NOW_US time_us_32
+#include "settings_backup_protocol.h"
+
 static void send_pids(void)
 {
     const flight_settings_t *settings = flight_settings_get();
@@ -247,13 +253,20 @@ static void process_command(const char *command,
                             const sbus_frame_t *receiver,
                             bool armed)
 {
+    if (settings_backup_process(command, armed || arm_mode_active(receiver) ||
+                                motor_test_enabled || pid_simulation_enabled)) {
+        last_client_activity_us = time_us_32();
+        return;
+    }
     if (strcmp(command, "HELLO") == 0) {
+        restore_active = false;
+        backup_snapshot_ready = false;
         client_active = true;
         last_client_activity_us = time_us_32();
         printf("@CFG HELLO FlightCode 3 PICO2_W %s\n", FLIGHTCODE_VERSION);
         printf("@CFG CAPABILITIES PIDS MOTOR_TEST TELEMETRY MOTOR_PROTOCOL MAIN_LOOP "
                "BOARD_ALIGNMENT MOTOR_DIRECTION MOTOR_IDLE RATES "
-               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT "
+               "FEEDFORWARD TPA FILTERS GYRO_CALIBRATION FLIGHT_LOG PID_SIM DFU REBOOT SETTINGS_BACKUP "
                "TELEMETRY_EXT RECEIVER_CONFIG RECEIVER_BIND BATTERY_VOLTAGE VBAT_CALIBRATION "
                "VTX_CONFIG OSD OSD_LAYOUT\n");
         printf("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
@@ -272,6 +285,8 @@ static void process_command(const char *command,
         return;
     }
     if (strcmp(command, "BYE") == 0) {
+        restore_active = false;
+        backup_snapshot_ready = false;
         client_active = false;
         motor_test_enabled = false;
         pid_simulation_enabled = false;
