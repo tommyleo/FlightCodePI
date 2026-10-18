@@ -4,6 +4,9 @@ FlightCodePI controls four ESCs with unidirectional DSHOT. DSHOT300, DSHOT600
 and DSHOT1200 are selectable from the Configurator; DSHOT300 is the default.
 Bidirectional DSHOT telemetry is not currently used.
 
+These connections apply to development firmware 1.6.4. Published v1.6.3 uses
+M1=GP1, M2=GP2, M3=GP3, M4=GP6. Rewire before using the new build.
+
 ## Signal connections and motor order
 
 View the quad from above with its nose pointing forward:
@@ -13,20 +16,20 @@ View the quad from above with its nose pointing forward:
 
         M4               M2
    front left       front right
-      GP6               GP2
+      GP7               GP5
 
 
         M3               M1
     rear left        rear right
-      GP3               GP1
+      GP6               GP4
 ```
 
 | Motor | Position | Pico GPIO | Physical pin |
 |---:|---|---:|---:|
-| M1 | Rear right | GP1 | 2 |
-| M2 | Front right | GP2 | 4 |
-| M3 | Rear left | GP3 | 5 |
-| M4 | Front left | GP6 | 9 |
+| M1 | Rear right | GP4 | 6 |
+| M2 | Front right | GP5 | 7 |
+| M3 | Rear left | GP6 | 9 |
+| M4 | Front left | GP7 | 10 |
 
 Connect each GPIO only to the corresponding ESC signal input. Connect every
 ESC signal ground to Pico GND, even when all ESCs are part of a 4-in-1 unit.

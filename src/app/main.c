@@ -21,11 +21,11 @@
 #endif
 
 #define SBUS_INPUT_GPIO 0u
-#define ESC_1_GPIO 1u
-#define ESC_2_GPIO 2u
-#define ESC_3_GPIO 3u
-#define ESC_4_GPIO 6u
-#define BUZZER_GPIO 7u
+#define ESC_1_GPIO 4u
+#define ESC_2_GPIO 5u
+#define ESC_3_GPIO 6u
+#define ESC_4_GPIO 7u
+#define BUZZER_GPIO 8u
 #define ESC_COUNT MAIN_ESC_COUNT
 #define THROTTLE_MIN_US 1000u
 #define THROTTLE_MAX_US 2000u

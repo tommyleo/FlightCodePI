@@ -6,10 +6,10 @@
 
 #define IMU_BACKEND IMU_BACKEND_MPU6500_SPI
 
-// Configurazione corrente: MPU6050 su I2C0.
+// Optional MPU6050 on I2C0; keep GP4/GP5 reserved for motor outputs.
 #define IMU_I2C_INDEX 0u
-#define IMU_I2C_SDA_GPIO 4u
-#define IMU_I2C_SCL_GPIO 5u
+#define IMU_I2C_SDA_GPIO 12u
+#define IMU_I2C_SCL_GPIO 13u
 #define IMU_I2C_BAUD_HZ 400000u
 #define IMU_I2C_ADDRESS 0x68u
 

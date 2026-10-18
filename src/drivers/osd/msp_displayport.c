@@ -10,9 +10,11 @@
 #include "hardware/gpio.h"
 #include "hardware/uart.h"
 
-#define DISPLAYPORT_UART uart1
-#define DISPLAYPORT_TX_GPIO 4u
-#define DISPLAYPORT_RX_GPIO 5u
+// The persisted Configurator port name UART1 denotes this logical VTX port.
+// RP2350 routes its hardware UART0 through the auxiliary function on GP2/GP3.
+#define DISPLAYPORT_UART uart0
+#define DISPLAYPORT_TX_GPIO 2u
+#define DISPLAYPORT_RX_GPIO 3u
 #define DISPLAYPORT_BAUD 115200u
 #define MSP_DISPLAYPORT 182u
 #define TX_BUFFER_SIZE 512u
@@ -86,8 +88,8 @@ void msp_displayport_init(void)
     if (settings->vtx_protocol != VTX_PROTOCOL_HDZERO_MSP ||
         settings->vtx_uart != 1u) return;
     uart_init(DISPLAYPORT_UART, DISPLAYPORT_BAUD);
-    gpio_set_function(DISPLAYPORT_TX_GPIO, GPIO_FUNC_UART);
-    gpio_set_function(DISPLAYPORT_RX_GPIO, GPIO_FUNC_UART);
+    gpio_set_function(DISPLAYPORT_TX_GPIO, UART_FUNCSEL_NUM(DISPLAYPORT_UART, DISPLAYPORT_TX_GPIO));
+    gpio_set_function(DISPLAYPORT_RX_GPIO, UART_FUNCSEL_NUM(DISPLAYPORT_UART, DISPLAYPORT_RX_GPIO));
     uart_set_format(DISPLAYPORT_UART, 8u, 1u, UART_PARITY_NONE);
     uart_set_hw_flow(DISPLAYPORT_UART, false, false);
     memset(&vtx_peer,0,sizeof(vtx_peer));
