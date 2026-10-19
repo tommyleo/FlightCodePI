@@ -72,8 +72,8 @@ Build both boards with one command from PowerShell:
 
 Always flash the files in **output/firmware**:
 
-- `output/firmware/FlightCodePI-PICO2.uf2` � Pico 2;
-- `output/firmware/FlightCodePI-PICO2_W.uf2` � Pico 2 W.
+- `output/firmware/FlightCodePI-PICO2.uf2` - Pico 2;
+- `output/firmware/FlightCodePI-PICO2_W.uf2` - Pico 2 W.
 
 These fixed filenames are refreshed on each build. To build one board only,
 use `-Board pico2` or `-Board pico2_w`. Intermediate files stay in
@@ -94,14 +94,14 @@ setup, build commands, flashing instructions and troubleshooting.
 
 ```text
 src/
-├── app/                 Firmware entry point and main flight loop
-├── control/             Rate controller, PID logic and mixer configuration
-├── drivers/
-│   ├── imu/             IMU abstraction and MPU6050/MPU6500 drivers
-│   ├── motors/          DSHOT ESC output driver
-│   └── receiver/        SBUS receiver and frame decoder
-├── protocol/            Shared FlightCode Configurator protocol
-└── storage/             Persistent settings and flight log
+|-- app/                 Firmware entry point and main flight loop
+|-- control/             Rate controller, PID logic and mixer configuration
+|-- drivers/
+|   |-- imu/             IMU abstraction and MPU6050/MPU6500 drivers
+|   |-- motors/          DSHOT ESC output driver
+|   `-- receiver/        SBUS receiver and frame decoder
+|-- protocol/            Shared FlightCode Configurator protocol
+`-- storage/             Persistent settings and flight log
 pio/                     PIO programs for SBUS and DSHOT
 docs/                    Dedicated hardware wiring guides
 ```
