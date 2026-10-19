@@ -32,7 +32,7 @@ downloads through a single desktop, web, or Android interface.
 - MPU6500, MPU9250, or MPU9255 on SPI0;
 - 16-channel SBUS or ELRS/CRSF receiver on GP0;
 - digital OSD plus HDZero band/channel and 25/200 mW power control via MSP
-  at 115200 baud on GP2 TX / GP3 RX (Configurator port UART1); see [HDZero MSP](docs/hdzero-msp.md);
+  at 115200 baud on GP2 TX / GP3 RX (Configurator default port UART2); see [HDZero MSP](docs/hdzero-msp.md);
 - DSHOT300, DSHOT600, and DSHOT1200;
 - roll, pitch, and yaw PID control with anti-windup and filtered D-term;
 - independent rates, expo, feedforward, and TPA;
@@ -64,17 +64,26 @@ The same flight-control code supports both `pico2` and `pico2_w`. Wi-Fi is not
 used. On Pico 2 W, the CYW43 device is initialized only to control the onboard
 LED.
 
-The default CMake target is Pico 2. Select the board when configuring a build:
+Build both boards with one command from PowerShell:
 
-```text
-cmake -S . -B build-pico2 -DPICO_BOARD=pico2
-cmake -S . -B build-pico2-w -DPICO_BOARD=pico2_w
+```powershell
+.\build-firmware.ps1
 ```
 
-From the Raspberry Pi Pico VS Code extension, **Run Project (USB)** invokes the
-internal `Run Project` task. It first compiles the project and then loads it
-through `picotool`. The board must be connected by USB; the first installation
-may require holding BOOTSEL while connecting it.
+Always flash the files in **output/firmware**:
+
+- `output/firmware/FlightCodePI-PICO2.uf2` — Pico 2;
+- `output/firmware/FlightCodePI-PICO2_W.uf2` — Pico 2 W.
+
+These fixed filenames are refreshed on each build. To build one board only,
+use `-Board pico2` or `-Board pico2_w`. Intermediate files stay in
+`build-release` and `build-pico2-w-release`; the `build` directory is also used
+by host tests and the Pico extension. Previous release packages have been removed; use only `output/firmware`
+for testing the current source.
+
+In VS Code, **Compile Project** runs the same script. **Run Project (USB)**
+first builds, asks which Pico board is connected, then loads its firmware
+from `output/firmware`. The first installation may require BOOTSEL.
 
 ## Building on Windows
 
@@ -135,7 +144,7 @@ The STM32 implementation has been verified on a CLRacingF4 with a SEQURE
 detected through their motor signal wires. FlightCodePI uses the same 4-way
 and AM32 bootloader protocol implementation.
 
-See [HARDWARE.md](HARDWARE.md) for the complete pinout, plus the dedicated
+See [hardware connections](docs/hardware-connections.md) for the complete pinout, plus the dedicated
 [SBUS receiver](docs/SBUS_RECEIVER.md) and
 [motors/ESC](docs/MOTORS_AND_ESC.md) wiring guides.
 

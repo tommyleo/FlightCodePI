@@ -4,6 +4,11 @@ FlightCodePI reads standard inverted SBUS at 100 kbit/s or non-inverted
 ELRS/CRSF at 420 kbit/s using PIO0. The firmware decodes 16 receiver channels
 and rejects invalid or failsafe data.
 
+Select UART1 (default) or UART2 in the Configurator. The table below shows
+UART1; on UART2 use GP2 RX (physical pin 4) and GP3 TX (physical pin 5).
+VTX must use the other port when enabled. See
+[port assignment and swapping](hardware-connections.md#selectable-serial-ports).
+
 ## Connections
 
 | Receiver connection | Raspberry Pi Pico 2 / Pico 2 W |
@@ -25,11 +30,11 @@ Use a suitable level shifter if the receiver output can exceed 3.3 V.
 
 For SBUS, connect the receiver's standard **inverted SBUS** output; inversion
 is performed in software. For ELRS, connect the receiver's non-inverted CRSF
-TX output. Connect GP1 to receiver RX to enable the **Bind receiver** button
+TX output. Connect GP1 (UART1) or GP3 (UART2) to receiver RX to enable the **Bind receiver** button
 with ExpressLRS 3.4 or newer. Apply ELRS first, click the button while disarmed
 and with motor testing/PID simulation stopped, then select Bind on the radio.
 The message confirms transmission only; verify the receiver LED and channels.
-CRSF telemetry is not implemented. GP1 is driven only while sending the command.
+CRSF telemetry is not implemented. The selected TX pin is driven only while sending the command.
 
 ## Channel assignment
 

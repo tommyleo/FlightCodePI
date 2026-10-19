@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define ELRS_TX_GPIO 1u
 bool sbus_receiver_bind(void);
 
 #define SBUS_CHANNEL_COUNT 16u

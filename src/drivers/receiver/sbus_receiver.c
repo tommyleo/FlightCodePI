@@ -267,9 +267,17 @@ bool sbus_receiver_set_protocol(uint32_t protocol)
     if (protocol > RECEIVER_PROTOCOL_CRSF) {
         return false;
     }
-    if (receiver_protocol == protocol) {
+    const unsigned int gpio = 2u * (flight_settings_get()->receiver_uart - 1u);
+    if (receiver_protocol == protocol && receiver_gpio == gpio) {
         return true;
     }
+    pio_sm_set_enabled(sbus_pio, sbus_sm, false);
+    gpio_init(receiver_gpio);
+    gpio_init(receiver_gpio + 1u);
+    receiver_gpio = gpio;
+    gpio_init(receiver_gpio);
+    gpio_set_dir(receiver_gpio, GPIO_IN);
+    gpio_disable_pulls(receiver_gpio);
     receiver_protocol = protocol;
     memset(&latest_frame, 0, sizeof(latest_frame));
     memset(&diagnostics, 0, sizeof(diagnostics));
@@ -318,7 +326,7 @@ bool sbus_receiver_bind(void)
     const int sm = pio_claim_unused_sm(sbus_pio, false);
     if (sm < 0) return false;
     const uint offset = pio_add_program(sbus_pio, &crsf_tx_program);
-    crsf_tx_program_init(sbus_pio, (uint)sm, offset, ELRS_TX_GPIO, CRSF_BAUD);
+    crsf_tx_program_init(sbus_pio, (uint)sm, offset, (receiver_gpio + 1u), CRSF_BAUD);
     bool sent = true;
     const uint32_t started_us = time_us_32();
     for (uint i = 0; i < sizeof(crsf_bind_frame); ++i) {
@@ -343,9 +351,9 @@ bool sbus_receiver_bind(void)
 cleanup:
     pio_sm_set_enabled(sbus_pio, (uint)sm, false);
     pio_sm_clear_fifos(sbus_pio, (uint)sm);
-    pio_sm_set_consecutive_pindirs(sbus_pio, (uint)sm, ELRS_TX_GPIO, 1, false);
-    gpio_init(ELRS_TX_GPIO);
-    gpio_disable_pulls(ELRS_TX_GPIO);
+    pio_sm_set_consecutive_pindirs(sbus_pio, (uint)sm, (receiver_gpio + 1u), 1, false);
+    gpio_init((receiver_gpio + 1u));
+    gpio_disable_pulls((receiver_gpio + 1u));
     pio_remove_program(sbus_pio, &crsf_tx_program, offset);
     pio_sm_unclaim(sbus_pio, (uint)sm);
     return sent;

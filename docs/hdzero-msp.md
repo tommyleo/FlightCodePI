@@ -3,10 +3,12 @@
 Select **HDZero V3 · MSP + DisplayPort** and a free UART in the VTX tab.
 Connect **FC TX → VTX RX**, **FC RX → VTX TX**, and ground. Both signal wires
 are needed for RF control. OSD alone can still work with only FC TX connected.
-On FlightCodePI 1.6.4 use Configurator port **UART1**: **GP2 TX / GP3 RX**
+On FlightCodePI 1.6.4 use Configurator default port **UART2**: **GP2 TX / GP3 RX**
 (physical pins 4 / 5). This logical port uses RP2350 hardware UART0 with
 `UART_FUNCSEL_NUM` selecting the auxiliary GPIO function. The receiver uses
-PIO on GP0/GP1, independently of this UART. Published v1.6.3 uses GP4 TX / GP5 RX.
+PIO on GP0/GP1 by default, independently of this UART. Both functions can be
+assigned to either logical UART1 or UART2 on different ports; see
+[selectable serial ports](hardware-connections.md#selectable-serial-ports). Published v1.6.3 uses GP4 TX / GP5 RX.
 
 Save and reboot with the VTX powered. FlightCode replies to HDZero's MSP
 handshake and supplies the selected band, channel, frequency and power while

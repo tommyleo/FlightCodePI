@@ -5,17 +5,11 @@
             "label": "Compile Project",
             "type": "process",
             "isBuildCommand": true,
-            "command": "${userHome}/.pico-sdk/ninja/v1.13.2/ninja",
-            "args": ["-C", "${workspaceFolder}/build"],
-            "group": "build",
-            "presentation": {
-                "reveal": "always",
-                "panel": "dedicated"
-            },
-            "problemMatcher": "$gcc",
-            "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.13.2/ninja.exe"
-            }
+            "command": "powershell.exe",
+            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/build-firmware.ps1"],
+            "group": {"kind": "build", "isDefault": true},
+            "presentation": {"reveal": "always", "panel": "dedicated"},
+            "problemMatcher": "$gcc"
         },
         {
             "label": "Run Project",
@@ -25,7 +19,7 @@
             "command": "${env:HOME}/.pico-sdk/picotool/2.3.0/picotool/picotool",
             "args": [
                 "load",
-                "${command:raspberry-pi-pico.launchTargetPath}",
+                "${workspaceFolder}/output/firmware/FlightCodePI-${input:firmwareBoard}.uf2",
                 "-fx"
             ],
             "presentation": {
@@ -100,5 +94,10 @@
                 "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
             }
         }
-    ]
+    ],
+    "inputs": [{
+        "id": "firmwareBoard", "type": "pickString",
+        "description": "Connected Pico board", "options": ["PICO2", "PICO2_W"],
+        "default": "PICO2"
+    }]
 }

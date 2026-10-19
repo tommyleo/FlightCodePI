@@ -158,9 +158,10 @@ static void send_filters(void)
 static void send_receiver_config(void)
 {
     const flight_settings_t *settings = flight_settings_get();
-    printf("@CFG RECEIVER_CONFIG %s PIO0 %s %lu %lu %lu %lu %lu %lu %u\n",
+    printf("@CFG RECEIVER_CONFIG %s UART%lu %s %lu %lu %lu %lu %lu %lu %u\n",
            settings->receiver_protocol == RECEIVER_PROTOCOL_CRSF
                ? "ELRS" : "SBUS",
+           (unsigned long)settings->receiver_uart,
            settings->receiver_channel_order == RECEIVER_ORDER_AETR1234
                ? "AETR1234" : "TAER1234",
            (unsigned long)(settings->arm_channel + 1u),
@@ -176,8 +177,9 @@ static void send_vtx_config(void)
 {
     const flight_settings_t *s = flight_settings_get();
     static const char bands[] = "ABEFRL";
-    printf("@CFG VTX_CONFIG %s UART1 %s %c %lu %lu %u\n",
+    printf("@CFG VTX_CONFIG %s UART%lu %s %c %lu %lu %u\n",
            s->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP ? "HDZERO_MSP" : "OFF",
+           (unsigned long)s->vtx_uart,
            s->vtx_region ? "US" : "EU", bands[s->vtx_band],
            (unsigned long)(s->vtx_channel + 1u),
            (unsigned long)s->vtx_power_mw, flight_settings_are_saved() ? 1u : 0u);
@@ -270,7 +272,7 @@ static void process_command(const char *command,
                "TELEMETRY_EXT RECEIVER_CONFIG RECEIVER_BIND BATTERY_VOLTAGE VBAT_CALIBRATION "
                "VTX_CONFIG OSD OSD_LAYOUT\n");
         printf("@CFG RECEIVER_PROTOCOLS SBUS ELRS\n");
-        printf("@CFG SERIAL_PORTS PIO0 UART1\n");
+        printf("@CFG SERIAL_PORTS UART1 UART2\n");
         printf("@CFG IMU %s %u\n",
                imu_get_name(),
                imu_is_available() ? 1u : 0u);
@@ -550,10 +552,10 @@ static void process_command(const char *command,
         else if (strcmp(protocol, "OFF") == 0)
             settings.vtx_protocol = VTX_PROTOCOL_OFF;
         else { printf("@CFG ERROR INVALID_VTX_PROTOCOL\n"); return; }
-        if (strcmp(port, "UART1") != 0) {
+        if (strcmp(port, "UART1") != 0 && strcmp(port, "UART2") != 0) {
             printf("@CFG ERROR INVALID_VTX_PORT\n"); return;
         }
-        settings.vtx_uart = 1u;
+        settings.vtx_uart = strcmp(port, "UART1") == 0 ? 1u : 2u;
         if (strcmp(region, "EU") == 0) settings.vtx_region = 0u;
         else if (strcmp(region, "US") == 0) settings.vtx_region = 1u;
         else { printf("@CFG ERROR INVALID_VTX_REGION\n"); return; }
@@ -587,14 +589,15 @@ static void process_command(const char *command,
         command, "SET_RECEIVER_CONFIG %7s %7s %15s %u %u %u %u %u %u",
         receiver_protocol, receiver_port, receiver_order, &arm_channel,
         &arm_min, &arm_max, &beep_channel, &beep_min, &beep_max);
-    if (receiver_with_port == 9 &&
-        strncmp(receiver_port, "PIO", 3u) == 0) {
+    if (receiver_with_port == 9) {
         if ((strcmp(receiver_protocol, "SBUS") != 0 &&
              strcmp(receiver_protocol, "ELRS") != 0) ||
-            strcmp(receiver_port, "PIO0") != 0) {
+            (strcmp(receiver_port, "UART1") != 0 &&
+             strcmp(receiver_port, "UART2") != 0)) {
             printf("@CFG ERROR INVALID_RECEIVER_CONFIG\n");
             return;
         }
+        settings.receiver_uart = strcmp(receiver_port, "UART1") == 0 ? 1u : 2u;
         settings.receiver_protocol = strcmp(receiver_protocol, "ELRS") == 0
                                          ? RECEIVER_PROTOCOL_CRSF
                                          : RECEIVER_PROTOCOL_SBUS;

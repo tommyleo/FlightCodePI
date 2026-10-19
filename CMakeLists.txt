@@ -118,3 +118,13 @@ target_link_libraries(FlightCodePI
 
 pico_add_extra_outputs(FlightCodePI)
 
+
+# Publish after pico_add_extra_outputs has generated the UF2.
+add_custom_command(TARGET FlightCodePI POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        "-DFIRMWARE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DFIRMWARE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        "-DFIRMWARE_BOARD=${PICO_BOARD}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tools/export-firmware.cmake"
+    VERBATIM
+)

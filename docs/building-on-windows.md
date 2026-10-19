@@ -31,78 +31,63 @@ extension settings and build tasks used by the project.
 
 ## Build from Visual Studio Code
 
-Open the Command Palette with `Ctrl+Shift+P` and run the Pico extension's
-compile command, or use **Terminal > Run Build Task > Compile Project**. The
-default CMake board is `pico2`.
-
-To build and immediately load the connected board, run **Run Project (USB)**.
-The first USB load can require this sequence:
-
-1. disconnect the board;
-2. hold **BOOTSEL**;
-3. reconnect USB;
-4. release **BOOTSEL** when the `RPI-RP2` drive appears;
-5. run **Run Project (USB)** again.
+Use **Terminal > Run Build Task > Compile Project**. It runs
+`build-firmware.ps1`, builds both boards in Release mode and updates the fixed
+output directory described below. **Run Project (USB)** first builds, asks
+whether the connected board is Pico 2 or Pico 2 W, then loads the matching UF2.
+The Pico extension's own compile action also exports the selected board's UF2
+to the same directory through the CMake post-build step.
 
 ## Build from PowerShell
 
-Open a new integrated terminal in Visual Studio Code so the extension-provided
-environment is available, then configure the required board.
-
-For Raspberry Pi Pico 2:
+From the repository root, run:
 
 ```powershell
-cmake -S . -B build-pico2 -G Ninja `
-  -DPICO_BOARD=pico2 `
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build build-pico2
+.\build-firmware.ps1
 ```
 
-For Raspberry Pi Pico 2 W:
+The script locates CMake, Ninja, SDK 2.3.0 and toolchain `15_2_Rel1` in
+`%USERPROFILE%\.pico-sdk`, so an ordinary PowerShell terminal is sufficient.
+It stops immediately if configuration, compilation or export fails.
+
+To compile only one board:
 
 ```powershell
-cmake -S . -B build-pico2-w -G Ninja `
-  -DPICO_BOARD=pico2_w `
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build build-pico2-w
+.\build-firmware.ps1 -Board pico2
+.\build-firmware.ps1 -Board pico2_w
 ```
 
-To use an ordinary PowerShell window instead, initialize the paths installed
-by the extension first:
+## Fixed firmware location
+
+| Board | File to flash |
+|---|---|
+| Pico 2 | `output/firmware/FlightCodePI-PICO2.uf2` |
+| Pico 2 W | `output/firmware/FlightCodePI-PICO2_W.uf2` |
+
+Filenames stay the same across versions. Each file has a `.sha256` companion;
+the latest hardware wiring guide is copied to this directory as well. Generated
+firmware is ignored by Git. Previous release packages have been removed. Use only these fixed files
+when testing the current source. A failed build does not replace the last
+successful firmware, so only flash after the build reports success.
+
+The fixed build caches are `build-release` (Pico 2) and
+`build-pico2-w-release` (Pico 2 W). ELF/BIN and debug files stay there. The
+`build` directory remains available to host tests and the Pico extension.
+A CMake post-build hook exports the selected board's UF2 even for direct
+CMake or extension builds; the wrapper also exports when no recompilation
+is needed.
+
+## Flashing
+
+Disconnect the board, hold BOOTSEL, reconnect USB and release BOOTSEL. Copy
+the matching UF2 from `output/firmware` to the bootloader's USB drive, or use
+**Run Project (USB)**. For a Pico 2, an explicit picotool command is:
 
 ```powershell
-$env:PICO_SDK_PATH = "$env:USERPROFILE\.pico-sdk\sdk\2.3.0"
-$env:PICO_TOOLCHAIN_PATH = "$env:USERPROFILE\.pico-sdk\toolchain\15_2_Rel1"
-$env:Path = "$env:USERPROFILE\.pico-sdk\cmake\v4.3.4\bin;" +
-            "$env:USERPROFILE\.pico-sdk\ninja\v1.13.2;" +
-            "$env:USERPROFILE\.pico-sdk\picotool\2.3.0\picotool;" +
-            "$env:PICO_TOOLCHAIN_PATH\bin;$env:Path"
+picotool load .\output\firmware\FlightCodePI-PICO2.uf2 -fx
 ```
 
-Then run either pair of CMake commands shown above. These environment changes
-apply only to the current PowerShell process.
-
-## Build outputs and flashing
-
-A successful build generates the following files in the selected build
-directory:
-
-```text
-FlightCodePI.uf2
-FlightCodePI.elf
-FlightCodePI.bin
-FlightCodePI.hex
-```
-
-The simplest manual flashing method is to start the board in BOOTSEL mode and
-copy `FlightCodePI.uf2` to the `RPI-RP2` USB drive. Alternatively, use **Run
-Project (USB)** or picotool:
-
-```powershell
-picotool load .\build-pico2\FlightCodePI.uf2 -fx
-```
-
-Use the output from `build-pico2-w` when flashing a Pico 2 W.
+For Pico 2 W, use `FlightCodePI-PICO2_W.uf2` instead. Do not interchange them.
 
 ## Troubleshooting
 
@@ -111,7 +96,7 @@ Use the output from `build-pico2-w` when flashing a Pico 2 W.
 - **CMake, Ninja or the compiler is not found**: let the Pico extension finish
   installing its tools, then open a new Visual Studio Code terminal.
 - **The wrong board remains selected**: use a different build directory for
-  `pico2` and `pico2_w`, as in the commands above, or remove only the stale
+  `pico2` and `pico2_w`, as used by the script, or remove only the stale
   build directory and configure it again.
 - **picotool cannot find the board**: reconnect it while holding BOOTSEL and
   confirm that the `RPI-RP2` drive appears in Windows Explorer.

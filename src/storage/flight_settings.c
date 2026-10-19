@@ -10,7 +10,7 @@
 #include "pico/stdlib.h"
 
 #define SETTINGS_MAGIC 0x46465049u
-#define SETTINGS_VERSION 15u
+#define SETTINGS_VERSION 16u
 #define SETTINGS_LEGACY_VERSION_13 13u
 #define SETTINGS_LEGACY_VERSION_12 12u
 #define SETTINGS_LEGACY_VERSION_11 11u
@@ -244,7 +244,10 @@ static bool valid_settings(const flight_settings_t *settings)
            settings->gyro_rate_hz <= settings->main_loop_hz &&
            (settings->vtx_protocol == VTX_PROTOCOL_OFF ||
             settings->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP) &&
-           settings->vtx_uart == 1u &&
+           settings->receiver_uart >= 1u && settings->receiver_uart <= 2u &&
+           settings->vtx_uart >= 1u && settings->vtx_uart <= 2u &&
+           (settings->vtx_protocol == VTX_PROTOCOL_OFF ||
+            settings->receiver_uart != settings->vtx_uart) &&
            settings->vtx_region <= 1u && settings->vtx_band < 6u &&
            settings->vtx_channel < 8u && settings->vtx_power_mw >= 1u &&
            settings->vtx_power_mw <= 2000u &&
@@ -293,7 +296,8 @@ void flight_settings_reset_defaults(void)
         .vbat_multiplier = 1.0f,
         .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
         .vtx_protocol = VTX_PROTOCOL_OFF,
-        .vtx_uart = 1u,
+        .vtx_uart = 2u,
+        .receiver_uart = 1u,
         .vtx_region = 0u,
         .vtx_band = 4u,
         .vtx_channel = 0u,

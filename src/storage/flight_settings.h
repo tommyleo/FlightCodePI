@@ -66,6 +66,7 @@ typedef struct {
     char osd_pilot_name[13];
     uint32_t vtx_osd_enabled;
     uint32_t vtx_osd_position;
+    uint32_t receiver_uart;
 } flight_settings_t;
 
 #define RECEIVER_ORDER_TAER1234 0u

@@ -20,7 +20,7 @@
 #include "pico/cyw43_arch.h"
 #endif
 
-#define SBUS_INPUT_GPIO 0u
+#define SBUS_INPUT_GPIO (2u * (flight_settings_get()->receiver_uart - 1u))
 #define ESC_1_GPIO 4u
 #define ESC_2_GPIO 5u
 #define ESC_3_GPIO 6u

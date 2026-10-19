@@ -3,7 +3,9 @@
 The Receiver tab exposes **Bind receiver** only when ELRS is selected.
 Apply the protocol and port before binding. This requires ExpressLRS 3.4+
 and both UART wires: receiver TX to FC RX, FC TX to receiver RX.
-FlightCodePI uses GP0 for RX and GP1 for TX. FlightCode uses the TX pin
+FlightCodePI uses GP0 RX / GP1 TX on UART1 (default), or GP2 RX / GP3 TX
+on UART2. Select the receiver port in the Configurator; an enabled VTX must
+use the other port. FlightCode uses the TX pin
 of the configured receiver UART (CLRacing F4: RX4 PA1 / TX4 PA0).
 
 The configurator enables the button only when the firmware advertises
