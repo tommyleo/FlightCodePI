@@ -1,6 +1,6 @@
-# FlightCodePI hardware connections — 1.6.4
+# FlightCodePI hardware connections
 
-Applies to Pico 2 and Pico 2 W running development firmware 1.6.4. View the board from above with USB at the top. GPIO numbers and physical pin numbers are different.
+Applies to Pico 2 and Pico 2 W running development firmware. View the board from above with USB at the top. GPIO numbers and physical pin numbers are different.
 
 The table shows the default assignment: receiver UART1, VTX UART2.
 
@@ -30,11 +30,8 @@ The default IMU backend remains MPU6500/MPU9250 over SPI on GP16–GP19. If the 
 
 For simultaneous USB and external regulator power, feed VSYS through a Schottky diode with cathode/band toward VSYS to prevent USB from backfeeding the regulator.
 
-## Migration from v1.6.3
-
-Move VTX TX/RX from GP4/GP5 to GP2/GP3. Move M1/M2/M3/M4 from GP1/GP2/GP3/GP6 to GP4/GP5/GP6/GP7. Move buzzer control from GP7 to GP8. Receiver, VBAT and SPI IMU pins stay the same. Pin assignments are compiled into the firmware and are not changed by restoring a configuration backup.
-
-Before using the new build, update the wiring and verify motor order with propellers removed. Physical signal validation of the new pinout is still required.
+Pin assignments are compiled into the firmware and are not changed by restoring a configuration backup.
+Verify motor order with propellers removed. Physical signal validation of the pinout is still required.
 
 ## Detailed wiring guides
 
@@ -105,7 +102,5 @@ then select the other VTX port and enable/apply VTX. Save both settings.
 Disconnect power before moving wires and verify the new wiring before use.
 Motor, buzzer and IMU pins do not change.
 
-The settings schema is now 16. Updating from schema 15 resets settings to
-defaults, including receiver UART1 and VTX UART2; configure and save again.
-Backups from the previous schema cannot be restored directly. Physical signal
-validation on both port assignments is still required.
+The settings schema is 16. Physical signal validation on both port assignments
+is still required.

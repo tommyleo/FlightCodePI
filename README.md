@@ -1,10 +1,7 @@
 # FlightCodePI
 
-Current published release: **1.6.3**.
-
-Development build: **1.6.4**, with a new hardware pin assignment. See
+See
 [complete hardware connections](docs/hardware-connections.md) before wiring or updating.
-The published v1.6.3 firmware uses the previous pin assignment.
 
 ## FlightCode in action! 🚀
 
