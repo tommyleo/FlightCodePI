@@ -11,6 +11,7 @@
 #include "flight_log.h"
 #include "flight_settings.h"
 #include "msp_displayport.h"
+#include "vtx_tramp.h"
 #include "pico/bootrom.h"
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
@@ -178,12 +179,12 @@ static void send_vtx_config(void)
     const flight_settings_t *s = flight_settings_get();
     static const char bands[] = "ABEFRL";
     printf("@CFG VTX_CONFIG %s UART%lu %s %c %lu %lu %u\n",
-           s->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP ? "HDZERO_MSP" : "OFF",
+           s->vtx_protocol == VTX_PROTOCOL_TRAMP ? "TRAMP" : s->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP ? "HDZERO_MSP" : "OFF",
            (unsigned long)s->vtx_uart,
            s->vtx_region ? "US" : "EU", bands[s->vtx_band],
            (unsigned long)(s->vtx_channel + 1u),
            (unsigned long)s->vtx_power_mw, flight_settings_are_saved() ? 1u : 0u);
-    printf("@CFG VTX_STATUS %s\n", msp_displayport_vtx_status_name());
+    printf("@CFG VTX_STATUS %s\n", (flight_settings_get()->vtx_protocol == VTX_PROTOCOL_TRAMP ? vtx_tramp_status_name() : msp_displayport_vtx_status_name()));
 }
 
 static void send_osd_status(void)
@@ -284,6 +285,8 @@ static void process_command(const char *command,
         last_client_activity_us = time_us_32();
         if (flight_settings_get()->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP)
             printf("@CFG VTX_LINK_STATUS %s\n", msp_displayport_vtx_status_name());
+        else if (flight_settings_get()->vtx_protocol == VTX_PROTOCOL_TRAMP)
+            printf("@CFG VTX_STATUS %s\n", vtx_tramp_status_name());
         return;
     }
     if (strcmp(command, "BYE") == 0) {
@@ -549,6 +552,8 @@ static void process_command(const char *command,
                protocol, port, region, &band, &channel, &power) == 6) {
         if (strcmp(protocol, "HDZERO_MSP") == 0)
             settings.vtx_protocol = VTX_PROTOCOL_HDZERO_MSP;
+        else if (strcmp(protocol, "TRAMP") == 0)
+            settings.vtx_protocol = VTX_PROTOCOL_TRAMP;
         else if (strcmp(protocol, "OFF") == 0)
             settings.vtx_protocol = VTX_PROTOCOL_OFF;
         else { printf("@CFG ERROR INVALID_VTX_PROTOCOL\n"); return; }

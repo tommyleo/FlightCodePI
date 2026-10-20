@@ -15,6 +15,7 @@
 #include "rate_controller.h"
 #include "sbus_receiver.h"
 #include "msp_displayport.h"
+#include "vtx_tramp.h"
 
 #if defined(CYW43_WL_GPIO_LED_PIN)
 #include "pico/cyw43_arch.h"
@@ -432,6 +433,7 @@ static void main_loop_step(main_loop_state_t *state)
         msp_displayport_update(battery_voltage_get(), escs_armed, boot_arm_guard.blocked,
                                loop_start_us);
     msp_displayport_process(escs_armed);
+    vtx_tramp_update(escs_armed);
     state->imu_task.rate_hz =
         imu_get_update_rate_hz(
             escs_armed, flight_settings_get()->gyro_rate_hz);

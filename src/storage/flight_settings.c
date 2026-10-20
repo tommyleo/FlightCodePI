@@ -243,6 +243,7 @@ static bool valid_settings(const flight_settings_t *settings)
             settings->gyro_rate_hz == 16000u) &&
            settings->gyro_rate_hz <= settings->main_loop_hz &&
            (settings->vtx_protocol == VTX_PROTOCOL_OFF ||
+            settings->vtx_protocol == VTX_PROTOCOL_TRAMP ||
             settings->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP) &&
            settings->receiver_uart >= 1u && settings->receiver_uart <= 2u &&
            settings->vtx_uart >= 1u && settings->vtx_uart <= 2u &&

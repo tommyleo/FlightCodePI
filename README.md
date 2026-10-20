@@ -172,3 +172,15 @@ existing saved channel mappings are preserved.
 All targets advertise `SETTINGS_BACKUP`. `GET_SETTINGS_INFO` captures a consistent full settings snapshot and returns family, board, persistent layout version, byte size, CRC32 and saved flag. `GET_SETTINGS_CHUNK offset count` reads at most 48 bytes as hex. `RESTORE_SETTINGS_BEGIN family board schema size checksum`, contiguous `RESTORE_SETTINGS_CHUNK offset hex` packets and `RESTORE_SETTINGS_COMMIT` form a staged transaction. Commit validates the full payload with the existing settings validator before saving, and replies with REBOOT_REQUIRED. No settings layout/version or flash address is changed.
 
 The operation requires disarming, the ARM switch inactive and motor/PID tests stopped. Partial, corrupt, expired or incompatible transfers never reach settings application. A new HELLO/BYE cancels staged state. Backups include all persistent FC configuration, not flight logs or ESC configuration; restore requires the same firmware family, target and settings layout. Use the shared Configurator Save backup / Load backup controls and restart after restoring.
+
+### IRC Tramp VTX
+
+FlightCodePI supports IRC Tramp on logical UART1 (GP0) or UART2 (GP2),
+using the selected TX pad as a single bidirectional 9600 baud control wire.
+Connect VTX Tramp control to GP2 for UART2 and share ground. Receiver and
+VTX must use different logical UARTs. PIO2 handles Tramp without blocking
+the flight loop. MSP DisplayPort remains available for digital VTXs.
+Select IRC Tramp, UART2, band/channel and power in the configurator, then
+save for reboot. The firmware queries limits, sends frequency/power while
+disarmed, and reports APPLIED only after readback matches. NO_RESPONSE can
+mean the VTX is unpowered. Analog Tramp does not provide DisplayPort OSD.

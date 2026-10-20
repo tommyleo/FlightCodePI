@@ -47,6 +47,7 @@ add_executable(FlightCodePI
         src/drivers/imu/mpu6500.c
         src/drivers/motors/esc_controller.c
         src/protocol/am32_passthrough.c
+        src/drivers/osd/vtx_tramp.c
         src/drivers/osd/msp_displayport.c
         src/drivers/receiver/sbus_receiver.c
         src/protocol/config_protocol.c
@@ -68,6 +69,8 @@ pico_generate_pio_header(FlightCodePI
 pico_generate_pio_header(FlightCodePI
         ${CMAKE_CURRENT_LIST_DIR}/pio/dshot.pio
 )
+
+pico_generate_pio_header(FlightCodePI ${CMAKE_CURRENT_LIST_DIR}/pio/tramp.pio)
 
 pico_set_program_name(FlightCodePI "FlightCodePI")
 pico_set_program_version(FlightCodePI "${FLIGHTCODE_VERSION}")

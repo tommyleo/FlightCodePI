@@ -1,0 +1,24 @@
+.program tramp
+; 9600 baud, 8 cycles/bit. One 16-byte TX frame then release the same wire.
+    set pindirs, 1
+    set y, 15
+byte:
+    pull block
+    set x, 7
+    set pins, 0 [7]
+bits:
+    out pins, 1 [6]
+    jmp x-- bits
+    set pins, 1 [6]
+    jmp y-- byte
+    set pindirs, 0
+receive:
+    wait 0 pin 0
+    set x, 7 [10]
+read:
+    in pins, 1
+    jmp x-- read [6]
+    push noblock
+    wait 1 pin 0
+    jmp receive
+

@@ -1,4 +1,5 @@
 #include "msp_displayport.h"
+#include "vtx_tramp.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -89,6 +90,7 @@ void msp_displayport_init(void)
         gpio_init(DISPLAYPORT_RX_GPIO);
     }
     available = false;
+    (void)vtx_tramp_init();
     tx_head = tx_tail = 0u;
     if (settings->vtx_protocol != VTX_PROTOCOL_HDZERO_MSP ||
         settings->vtx_uart == settings->receiver_uart) return;
@@ -185,7 +187,7 @@ void msp_displayport_update(float voltage, bool armed, bool boot_arm_warning, ui
 bool msp_displayport_is_available(void)
 {
     return available && flight_settings_get()->vtx_protocol == VTX_PROTOCOL_HDZERO_MSP &&
-        flight_settings_get()->vtx_uart == 1u;
+        flight_settings_get()->vtx_uart != flight_settings_get()->receiver_uart;
 }
 
 const char *msp_displayport_status_name(void)
