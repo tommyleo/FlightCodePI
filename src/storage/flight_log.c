@@ -11,7 +11,7 @@
 #include "imu.h"
 
 #define LOG_FLASH_MAGIC 0x50494c47u
-#define LOG_FLASH_VERSION 8u
+#define LOG_FLASH_VERSION 9u
 #define LOG_FLASH_SECTORS 25u
 #define LOG_FLASH_SIZE (LOG_FLASH_SECTORS * FLASH_SECTOR_SIZE)
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
@@ -40,8 +40,9 @@ _Static_assert(sizeof(log_header_t) +
 static flight_log_record_t records[FLIGHT_LOG_CAPACITY];
 static uint32_t write_index;
 static uint32_t record_count;
-static uint16_t decimation_count;
-static uint16_t log_decimation = 1u;
+static uint32_t next_log_us;
+static uint16_t overwritten_records;
+
 static bool recording;
 static bool inhibited;
 static bool using_flash;
@@ -97,11 +98,30 @@ static int8_t scaled_pid(float value)
     return (int8_t)lroundf(scaled);
 }
 
+static bool signal_clipped(const float raw[3], const float gyro[3],
+                           const float du[3], const float df[3],
+                           const float p[3], const float it[3],
+                           const float ff[3], const float pid[3])
+{
+    for (unsigned i = 0; i < 3; ++i) {
+        if (raw[i] < -3276.8f || raw[i] > 3276.7f ||
+            gyro[i] < -3276.8f || gyro[i] > 3276.7f ||
+            du[i] < -327.68f || du[i] > 327.67f ||
+            df[i] < -327.68f || df[i] > 327.67f ||
+            p[i] < -64.0f || p[i] > 63.5f ||
+            it[i] < -64.0f || it[i] > 63.5f ||
+            ff[i] < -64.0f || ff[i] > 63.5f ||
+            pid[i] < -64.0f || pid[i] > 63.5f) return true;
+    }
+    return false;
+}
+
 void flight_log_init(void)
 {
     write_index = 0u;
     record_count = 0u;
-    decimation_count = 0u;
+    next_log_us = time_us_32();
+    overwritten_records = 0u;
     recording = false;
     inhibited = false;
     using_flash = false;
@@ -162,11 +182,11 @@ void flight_log_start(void)
     persist_pending = false;
     write_index = 0u;
     record_count = 0u;
-    decimation_count = 0u;
+    next_log_us = time_us_32();
+    overwritten_records = 0u;
     flight_qualified = false;
     const flight_settings_t *const s = flight_settings_get();
-    log_decimation = (uint16_t)(s->main_loop_hz / FLIGHT_LOG_RATE_HZ);
-    if (log_decimation == 0u) log_decimation = 1u;
+
     memset(&flight_metadata, 0, sizeof(flight_metadata));
     flight_metadata.version = FLIGHT_LOG_METADATA_VERSION;
     flight_metadata.main_loop_hz = s->main_loop_hz;
@@ -205,9 +225,14 @@ void flight_log_stop(uint8_t stop_flag)
     if (recording && record_count > 0u) {
         flight_log_record_t *marker = &records[write_index];
         *marker = *ram_record(record_count - 1u);
+        marker->timestamp_us = time_us_32();
+        if (record_count == FLIGHT_LOG_CAPACITY && overwritten_records < UINT16_MAX)
+            ++overwritten_records;
+        marker->overwritten_records = overwritten_records;
         memset(marker->motor, 0, sizeof(marker->motor));
         marker->flags =
-            (marker->flags & FLIGHT_LOG_FLAG_MIXER_SATURATED) | stop_flag;
+            (marker->flags & (FLIGHT_LOG_FLAG_MIXER_SATURATED |
+                              FLIGHT_LOG_FLAG_SIGNAL_CLIPPED)) | stop_flag;
         write_index = (write_index + 1u) % FLIGHT_LOG_CAPACITY;
         if (record_count < FLIGHT_LOG_CAPACITY) ++record_count;
         persist_pending = true;
@@ -294,30 +319,40 @@ void flight_log_persist_if_ready(void)
     using_flash = true;
 }
 
-void flight_log_record(const float gyro[3],
+void flight_log_record(const float gyro_raw[3], const float gyro[3],
                        const float setpoint[3],
                        const float p_term[3],
-                       const float i_term[3], const float d_term[3],
+                       const float i_term[3], const float d_raw[3], const float d_term[3],
                        const float ff_term[3],
                        const float motors[4],
                        float throttle_percent,
                        bool saturated,
-                       uint16_t main_loop_us, uint16_t gyro_loop_us)
+                       uint16_t main_loop_us, uint16_t gyro_loop_us,
+                       const float pid_output[3])
 {
     if (!recording || inhibited) return;
     if (throttle_percent > LOG_MIN_FLIGHT_THROTTLE_PERCENT) {
         flight_qualified = true;
     }
-    if (++decimation_count < log_decimation) return;
-    decimation_count = 0u;
-
+    const uint32_t now = time_us_32();
+    if ((int32_t)(now - next_log_us) < 0) return;
+    const uint32_t period = 1000000U / FLIGHT_LOG_RATE_HZ;
+    next_log_us += ((now - next_log_us) / period + 1U) * period;
     flight_log_record_t *item = &records[write_index];
+    memset(item, 0, sizeof(*item));
+    item->timestamp_us = now;
+    if (record_count == FLIGHT_LOG_CAPACITY && overwritten_records < UINT16_MAX)
+        ++overwritten_records;
+    item->overwritten_records = overwritten_records;
     for (uint8_t i = 0u; i < 3u; ++i) {
         item->gyro[i] = scaled_i16(gyro[i], 10.0f);
         item->setpoint[i] = scaled_i16(setpoint[i], 10.0f);
         item->p_term[i] = scaled_pid(p_term[i]);
         item->i_term[i] = scaled_pid(i_term[i]);
-        item->d_term[i] = scaled_pid(d_term[i]);
+        item->gyro_raw[i] = scaled_i16(gyro_raw[i], 10.0f);
+        item->d_unfiltered[i] = scaled_i16(d_raw[i], 100.0f);
+        item->d_filtered[i] = scaled_i16(d_term[i], 100.0f);
+        item->pid[i] = scaled_pid(pid_output[i]);
         item->ff_term[i] = scaled_pid(ff_term[i]);
     }
     for (uint8_t i = 0u; i < 4u; ++i) {
@@ -330,6 +365,9 @@ void flight_log_record(const float gyro[3],
         (throttle_percent > 100.0f ? 100.0f : throttle_percent);
     item->throttle = (uint8_t)lroundf(throttle_percent * 2.0f);
     item->flags = saturated ? FLIGHT_LOG_FLAG_MIXER_SATURATED : 0u;
+    if (signal_clipped(gyro_raw, gyro, d_raw, d_term,
+                       p_term, i_term, ff_term, pid_output))
+        item->flags |= FLIGHT_LOG_FLAG_SIGNAL_CLIPPED;
     item->main_loop_us = main_loop_us;
     item->gyro_loop_us = gyro_loop_us;
     item->battery_centivolts = battery_centivolts;

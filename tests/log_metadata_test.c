@@ -12,19 +12,19 @@
 
 int main(void)
 {
-    assert(sizeof(flight_log_record_t) == 40);
+    assert(sizeof(flight_log_record_t) == 64);
     flight_log_metadata_t saved = {0}, decoded;
     saved.version = FLIGHT_LOG_METADATA_VERSION;
     saved.motor_idle_percent = 5.5f;
     saved.reserved = 25;
     assert(flight_log_metadata_decode(&decoded, &saved));
     assert(memcmp(&saved, &decoded, sizeof(saved)) == 0);
-    for (unsigned version = 2; version <= 3; ++version) {
+    for (unsigned version = 2; version <= 5; ++version) {
         saved.version = version;
         assert(!flight_log_metadata_decode(&decoded, &saved));
     }
     saved.version = 99;
     assert(!flight_log_metadata_decode(&decoded, &saved));
-    puts("Metadata v4 decode tests passed");
+    puts("Metadata v6 decode tests passed");
     return 0;
 }

@@ -1,4 +1,5 @@
 #include "flight_settings.h"
+#include "imu.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -239,8 +240,7 @@ static bool valid_settings(const flight_settings_t *settings)
            settings->beep_min_us < settings->beep_max_us &&
            finite_range(settings->vbat_multiplier, 0.5f, 1.5f) &&
            settings->receiver_protocol <= RECEIVER_PROTOCOL_CRSF &&
-           (settings->gyro_rate_hz == 8000u ||
-            settings->gyro_rate_hz == 16000u) &&
+           imu_gyro_rate_supported(settings->gyro_rate_hz) &&
            settings->gyro_rate_hz <= settings->main_loop_hz &&
            (settings->vtx_protocol == VTX_PROTOCOL_OFF ||
             settings->vtx_protocol == VTX_PROTOCOL_TRAMP ||
@@ -293,7 +293,7 @@ void flight_settings_reset_defaults(void)
         .beep_min_us = 1950u,
         .beep_max_us = 2100u,
         .main_loop_hz = 16000u,
-        .gyro_rate_hz = 16000u,
+        .gyro_rate_hz = 8000u,
         .vbat_multiplier = 1.0f,
         .receiver_protocol = RECEIVER_PROTOCOL_SBUS,
         .vtx_protocol = VTX_PROTOCOL_OFF,
@@ -325,13 +325,17 @@ void flight_settings_init(void)
     if (stored->magic == SETTINGS_MAGIC &&
         stored->version == SETTINGS_VERSION &&
         stored->checksum ==
-            hash_record(stored, offsetof(settings_record_t, checksum)) &&
-        valid_settings(&stored->settings) &&
-        (stored->settings.main_loop_hz == 8000u ||
-         stored->settings.main_loop_hz == 16000u)) {
-        current_settings = stored->settings;
-        settings_saved = true;
-        return;
+            hash_record(stored, offsetof(settings_record_t, checksum))) {
+        flight_settings_t loaded = stored->settings;
+        const bool normalized = loaded.gyro_rate_hz == 16000u;
+        if (normalized) loaded.gyro_rate_hz = 8000u;
+        if (valid_settings(&loaded) &&
+            (loaded.main_loop_hz == 8000u || loaded.main_loop_hz == 16000u)) {
+            current_settings = loaded;
+            /* Preserve tuning and ports; only the gyro setting needs saving. */
+            settings_saved = !normalized;
+            return;
+        }
     }
 
     const legacy_record_v13_t *legacy_v13 =

@@ -348,13 +348,16 @@ static void flight_control_step(const sbus_frame_t *receiver,
         rate_output.pitch_setpoint_dps,
         rate_output.yaw_setpoint_dps,
     };
-    flight_log_record(gyro, setpoints, rate_output.p_term_percent,
+    const float pid_output[3] = {rate_output.roll_pid_percent,
+        rate_output.pitch_pid_percent, rate_output.yaw_pid_percent};
+    flight_log_record(rate_output.gyro_raw_dps, gyro, setpoints, rate_output.p_term_percent,
                        rate_output.i_term_percent,
+                       rate_output.d_unfiltered_percent,
                        rate_output.d_term_percent,
                        rate_output.ff_term_percent, rate_output.motor_percent,
                        (float)throttle_percent,
                        rate_output.mixer_saturated,
-                       main_loop_us, gyro_loop_us);
+                       main_loop_us, gyro_loop_us, pid_output);
 
 
 }

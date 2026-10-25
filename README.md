@@ -20,9 +20,11 @@ downloads through a single desktop, web, or Android interface.
 - selectable 8 or 16 kHz main scheduler for motor output and timed system
   tasks;
 - PID updates remain synchronized to fresh gyroscope samples;
-- with an MPU6500/9250, the gyroscope and PID follow the 8 kHz scheduler
-  directly; at 16 kHz the firmware uses the sensor's 32 kHz gyro-only path and
-  samples it at the 16 kHz scheduler rate while armed;
+- with an MPU6500/9250/9255, the gyroscope and PID use the filtered 8 kHz
+  path even with a 16 kHz main scheduler. Configurator offers only 8 kHz for
+  the gyro; direct 16 kHz requests are rejected. Saved 16 kHz gyro settings
+  are normalized to 8 kHz at boot without resetting tuning (save once to
+  persist the normalized setting);
 - with an MPU6050, the gyroscope and PID remain limited to the configured 1 kHz
   filtered sample rate while the main scheduler and motor output can run at 8
   or 16 kHz;
@@ -43,14 +45,14 @@ downloads through a single desktop, web, or Android interface.
 - extended telemetry and receiver diagnostics;
 - GP26/ADC0 battery sensing with an 11:1 voltage divider and persistent final
   calibration multiplier;
-- persistent 200 Hz flight log sized to the reserved flash area and retained
+- persistent 500 Hz circular flight log sized to the reserved flash area and retained
   above 10% throttle;
 - USB BOOTSEL restart from the configurator.
 - onboard status LED flashes once per second as a firmware heartbeat and twice
   per second when a valid SBUS signal is present;
 - configured buzzer mode produces two short beeps every 500 ms.
 
-Version 2 flight-log metadata and version 7 Configurator JSON logs record both
+Version 6 flight-log metadata and version 2.0 Configurator JSON logs record both
 the measured main-scheduler period and the interval between fresh gyroscope/PID
 updates. Each sample exposes the periods in microseconds and their derived
 frequencies, alongside the separated P/I/D/FF terms.
@@ -148,7 +150,7 @@ See [hardware connections](docs/hardware-connections.md) for the complete pinout
 ## Direct throttle and storage formats
 
 Throttle is applied directly to the controller and mixer on each update.
-Log metadata uses version 5 with integer PID/feedforward values; exports contain a single throttle channel.
+Log metadata uses version 6 with integer PID/feedforward values; exports contain a single throttle channel.
 Settings saved by the preceding firmware version are not migrated; configure
 and save the aircraft settings again after updating. Existing onboard logs
 from the preceding format are not loaded.
@@ -181,3 +183,5 @@ Select IRC Tramp, UART2, band/channel and power in the configurator, then
 save for reboot. The firmware queries limits, sends frequency/power while
 disarmed, and reports APPLIED only after readback matches. NO_RESPONSE can
 mean the VTX is unpowered. Analog Tramp does not provide DisplayPort OSD.
+
+See [flight log format 2.0](docs/log-format-2.md) for the 1.6.4 logger, retained duration and analysis limits.

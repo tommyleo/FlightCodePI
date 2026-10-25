@@ -17,6 +17,8 @@ typedef struct {
     float roll_pid_percent;
     float pitch_pid_percent;
     float yaw_pid_percent;
+    float gyro_raw_dps[3];
+    float d_unfiltered_percent[3];
     float p_term_percent[3];
     float i_term_percent[3];
     float d_term_percent[3];

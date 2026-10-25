@@ -161,14 +161,10 @@ bool mpu6500_set_gyro_only(mpu6500_t *device, bool enabled,
     if (!device->initialized) {
         return false;
     }
-    /*
-     * The filtered MPU6500 path is already 8 kHz. Select the 32 kHz gyro
-     * path only when a 16 kHz scheduler needs it, then sample it at the
-     * scheduler rate. Standby all accelerometer axes while armed.
-     */
-    const bool high_rate_gyro = enabled && scheduler_rate_hz > 8000u;
-    if (!write_register(device, MPU6500_REG_GYRO_CONFIG,
-                        high_rate_gyro ? 0x19u : 0x18u)) {
+    /* Keep the filtered 8 kHz path even if an old caller requests 16 kHz.
+     * The bypass path produced severe vibration/clipping in flight logs. */
+    (void)scheduler_rate_hz;
+    if (!write_register(device, MPU6500_REG_GYRO_CONFIG, 0x18u)) {
         return false;
     }
     return write_register(device, MPU6500_REG_PWR_MGMT_2,
@@ -208,5 +204,7 @@ const char *mpu6500_get_name(const mpu6500_t *device)
 uint32_t mpu6500_get_gyro_rate_hz(bool gyro_only,
                                   uint32_t scheduler_rate_hz)
 {
-    return gyro_only && scheduler_rate_hz > 8000u ? 32000u : 8000u;
+    (void)gyro_only;
+    (void)scheduler_rate_hz;
+    return 8000u;
 }

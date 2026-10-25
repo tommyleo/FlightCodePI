@@ -165,7 +165,7 @@ static float pid_update(pid_state_t *state,
                          bool integral_enabled,
                           bool relax_integral,
                           float *p_out, float *i_out,
-                          float *d_out, float *ff_out)
+                          float *d_out, float *ff_out, float *d_raw_out)
 {
     const float error = setpoint - measured_rate;
     float integral_factor = 1.0f;
@@ -216,6 +216,7 @@ static float pid_update(pid_state_t *state,
     *p_out = gains->kp * tpa_factor * error;
     *i_out = state->integral;
     *d_out = gains->kd * tpa_factor * dynamic_d_multiplier * state->dterm;
+    *d_raw_out = gains->kd * tpa_factor * dynamic_d_multiplier * derivative;
     *ff_out = feedforward * setpoint;
     return clamp_float(*p_out + *i_out + *d_out + *ff_out,
                        -output_limit,
@@ -363,6 +364,9 @@ bool rate_controller_update(const imu_sample_t *imu,
     }
     update_filter_coefficients(dt, settings->gyro_lpf_hz,
                                settings->dterm_lpf_hz);
+    output->gyro_raw_dps[0] = (imu->gyro_x_dps - gyro_bias_x) * GYRO_ROLL_SIGN;
+    output->gyro_raw_dps[1] = (imu->gyro_y_dps - gyro_bias_y) * GYRO_PITCH_SIGN;
+    output->gyro_raw_dps[2] = (imu->gyro_z_dps - gyro_bias_z) * GYRO_YAW_SIGN;
     output->roll_rate_dps =
         pt1(&gyro_filter[0], imu->gyro_x_dps - gyro_bias_x) * GYRO_ROLL_SIGN;
     output->pitch_rate_dps =
@@ -421,7 +425,7 @@ bool rate_controller_update(const imu_sample_t *imu,
                    airmode_active, false,
                    &output->p_term_percent[0],
                    &output->i_term_percent[0], &output->d_term_percent[0],
-                   &output->ff_term_percent[0]);
+                   &output->ff_term_percent[0], &output->d_unfiltered_percent[0]);
     output->pitch_pid_percent =
         pid_update(&pitch_pid, &tuning_cache.pitch,
                    output->pitch_setpoint_dps, output->pitch_rate_dps,
@@ -431,7 +435,7 @@ bool rate_controller_update(const imu_sample_t *imu,
                    airmode_active, false,
                    &output->p_term_percent[1],
                    &output->i_term_percent[1], &output->d_term_percent[1],
-                   &output->ff_term_percent[1]);
+                   &output->ff_term_percent[1], &output->d_unfiltered_percent[1]);
     output->yaw_pid_percent =
         pid_update(&yaw_pid, &tuning_cache.yaw,
                    output->yaw_setpoint_dps, output->yaw_rate_dps,
@@ -440,7 +444,7 @@ bool rate_controller_update(const imu_sample_t *imu,
                   0.0f, airmode_active, true,
                   &output->p_term_percent[2], &output->i_term_percent[2],
                   &output->d_term_percent[2],
-                  &output->ff_term_percent[2]);
+                  &output->ff_term_percent[2], &output->d_unfiltered_percent[2]);
 
     const float mixer_yaw =
         settings->motor_direction_reversed != 0u

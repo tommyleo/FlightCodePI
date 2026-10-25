@@ -1,0 +1,37 @@
+PICO_SDK_PATH is C:/Users/tomma/.pico-sdk/sdk/2.3.0
+Target board (PICO_BOARD) is 'pico2'.
+Using board configuration from C:/Users/tomma/.pico-sdk/sdk/2.3.0/src/boards/include/boards/pico2.h
+Pico Platform (PICO_PLATFORM) is 'rp2350-arm-s'.
+Build type is Release
+Using picotool from C:/Users/tomma/.pico-sdk/picotool/2.3.0/picotool/picotool.exe
+TinyUSB available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/tinyusb/hw/bsp/rp2040; enabling build support for USB.
+BTstack available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/btstack
+cyw43-driver available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/cyw43-driver
+mbedtls available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/mbedtls
+lwIP available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/lwip
+C library type is newlib
+-- Configuring done (2.8s)
+-- Generating done (0.6s)
+-- Build files have been written to: C:/SvilPico/FlightCodePI/build-release
+ninja: no work to do.
+-- Firmware: C:\SvilPico\FlightCodePI/output/firmware/FlightCodePI-PICO2.uf2
+PICO_SDK_PATH is C:/Users/tomma/.pico-sdk/sdk/2.3.0
+Target board (PICO_BOARD) is 'pico2_w'.
+Using board configuration from C:/Users/tomma/.pico-sdk/sdk/2.3.0/src/boards/include/boards/pico2_w.h
+Pico Platform (PICO_PLATFORM) is 'rp2350-arm-s'.
+Build type is Release
+Using picotool from C:/Users/tomma/.pico-sdk/picotool/2.3.0/picotool/picotool.exe
+TinyUSB available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/tinyusb/hw/bsp/rp2040; enabling build support for USB.
+BTstack available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/btstack
+cyw43-driver available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/cyw43-driver
+Pico W Bluetooth build support available.
+mbedtls available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/mbedtls
+lwIP available at C:/Users/tomma/.pico-sdk/sdk/2.3.0/lib/lwip
+Pico W Wi-Fi build support available.
+C library type is newlib
+-- Configuring done (1.1s)
+-- Generating done (0.7s)
+-- Build files have been written to: C:/SvilPico/FlightCodePI/build-pico2-w-release
+ninja: no work to do.
+-- Firmware: C:\SvilPico\FlightCodePI/output/firmware/FlightCodePI-PICO2_W.uf2
+Firmware ready: C:\SvilPico\FlightCodePI\output\firmware

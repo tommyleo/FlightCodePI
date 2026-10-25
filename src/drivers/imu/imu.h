@@ -25,4 +25,11 @@ uint32_t imu_get_update_rate_hz(bool gyro_only,
                                 uint32_t scheduler_rate_hz);
 uint32_t imu_get_gyro_rate_hz(void);
 
+/* PI accepts only the 8 kHz gyro setting; each backend caps the effective
+ * update rate to its filtered sensor path, independently of the scheduler. */
+static inline bool imu_gyro_rate_supported(uint32_t rate_hz)
+{
+    return rate_hz == 8000u;
+}
+
 #endif
