@@ -45,8 +45,9 @@ downloads through a single desktop, web, or Android interface.
 - extended telemetry and receiver diagnostics;
 - GP26/ADC0 battery sensing with an 11:1 voltage divider and persistent final
   calibration multiplier;
-- persistent 500 Hz circular flight log sized to the reserved flash area and retained
-  above 10% throttle;
+- persistent 200 Hz circular flight log retaining approximately the last 20 seconds
+  (4,029 records in a 252 KiB reserved flash area, buffered in RAM during flight);
+  flights exceeding 10% throttle are retained after disarm;
 - USB BOOTSEL restart from the configurator.
 - onboard status LED flashes once per second as a firmware heartbeat and twice
   per second when a valid SBUS signal is present;

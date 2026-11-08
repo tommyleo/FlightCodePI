@@ -30,10 +30,10 @@ int main(void) {
     assert(signal_clipped(zero,zero,extreme,zero,zero,zero,zero,zero));
     assert(!signal_clipped(zero,zero,zero,zero,zero,zero,zero,zero));
     clock_us+=1000; sample(); assert(record_count==1);
-    clock_us+=1000; sample(); assert(record_count==2);
+    clock_us+=4000; sample(); assert(record_count==2);
     clock_us+=7000; sample(); assert(record_count==3);
     clock_us+=100; sample(); assert(record_count==3); /* no invented catch-up samples */
-    for (uint32_t n=0;n<FLIGHT_LOG_CAPACITY+10;n++) { clock_us+=2000; sample(); }
+    for (uint32_t n=0;n<FLIGHT_LOG_CAPACITY+10;n++) { clock_us+=5000; sample(); }
     assert(record_count==FLIGHT_LOG_CAPACITY); assert(overwritten_records==13);
     clock_us+=123; flight_log_stop(FLIGHT_LOG_FLAG_STOP_DISARM);
     flight_log_record_t last; assert(flight_log_get(record_count-1,&last));
@@ -43,7 +43,7 @@ int main(void) {
     flight_log_init(); assert(using_flash); assert(record_count==FLIGHT_LOG_CAPACITY);
     assert(flight_log_get(record_count-1,&last)); assert(last.overwritten_records==14);
     flight_log_metadata_t md; assert(flight_log_get_metadata(&md));
-    assert(md.version==6); assert(md.log_rate_hz==500);
+    assert(md.version==6); assert(md.log_rate_hz==200);
     ((log_header_t *)(test_flash+LOG_FLASH_OFFSET))->version--;
     flight_log_init(); assert(!using_flash); assert(record_count==0);
     puts("Internal logger lifecycle, quantization, rollover, ring, persistence and old-format rejection passed");

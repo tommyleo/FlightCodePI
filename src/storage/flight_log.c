@@ -12,7 +12,8 @@
 
 #define LOG_FLASH_MAGIC 0x50494c47u
 #define LOG_FLASH_VERSION 9u
-#define LOG_FLASH_SECTORS 25u
+/* About 20 seconds at 200 Hz; the same capacity is buffered in RAM. */
+#define LOG_FLASH_SECTORS 63u
 #define LOG_FLASH_SIZE (LOG_FLASH_SECTORS * FLASH_SECTOR_SIZE)
 #define SETTINGS_FLASH_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 #define LOG_FLASH_OFFSET (SETTINGS_FLASH_OFFSET - LOG_FLASH_SIZE)
@@ -31,6 +32,9 @@ typedef struct {
 
 #define FLIGHT_LOG_CAPACITY \
     ((LOG_FLASH_SIZE - sizeof(log_header_t)) / sizeof(flight_log_record_t))
+
+_Static_assert(FLIGHT_LOG_CAPACITY > 20u * FLIGHT_LOG_RATE_HZ,
+               "flight log must retain at least 20 seconds");
 
 _Static_assert(sizeof(log_header_t) +
                    FLIGHT_LOG_CAPACITY * sizeof(flight_log_record_t) <=

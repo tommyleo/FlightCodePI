@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#define FLIGHT_LOG_RATE_HZ 500u
+#define FLIGHT_LOG_RATE_HZ 200u
 #define FLIGHT_LOG_FORMAT_VERSION_MAJOR 2u
 #define FLIGHT_LOG_FORMAT_VERSION_MINOR 0u
 #define FLIGHT_LOG_FLAG_MIXER_SATURATED 0x01u
